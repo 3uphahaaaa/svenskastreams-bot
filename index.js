@@ -48,32 +48,37 @@ const CONFIG = {
 
 /* ================== PRODUKTER ================== */
 const PRODUCTS = {
-  "Spotify Premium": {
+  "🎵 Spotify Premium": {
     "1 Månad": "19 kr",
     "3 Månader": "39 kr",
     "6 Månader": "59 kr",
     "12 Månader": "89 kr"
   },
 
-  "Netflix 4K UHD Premium": {
+  "🎬 Netflix 4K UHD Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
 
-  "HBO Max Premium": {
+  "📺 HBO Max Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
 
-  "Disney+ Premium": {
+  "🍿 Disney+ Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
 
-  "NordVPN Plus": {
+  "🔐 NordVPN Plus": {
     "12 Månader": "49 kr"
+  },
+
+  "🛡️ Malwarebytes Premium": {
+    "12 Månader": "69 kr"
   }
 };
+
 
 
 /* ================== STATE ================== */
