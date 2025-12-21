@@ -1,20 +1,40 @@
-
+require("dotenv").config();
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
 
 const commands = [
-  new SlashCommandBuilder().setName("3upswish").setDescription("Visar Swish"),
-  new SlashCommandBuilder().setName("ticketpanel").setDescription("Skapar ticketpanel")
-].map(cmd => cmd.toJSON());
+  new SlashCommandBuilder()
+    .setName("swish")
+    .setDescription("Visa Swish-nummer"),
 
-const TOKEN = process.env.DISCORD_TOKEN;
+  new SlashCommandBuilder()
+    .setName("ltc")
+    .setDescription("Visa Litecoin-adress"),
+
+  new SlashCommandBuilder()
+    .setName("vouch")
+    .setDescription("Lämna ett omdöme")
+    .addIntegerOption(o =>
+      o.setName("betyg")
+        .setDescription("Betyg 1–5")
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("text")
+        .setDescription("Ditt omdöme")
+        .setRequired(true)
+    )
+].map(c => c.toJSON());
+
+const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
+    console.log("Deploying slash commands...");
     await rest.put(
-      Routes.applicationCommands("1452052271188934726"),
+      Routes.applicationCommands("DIN_BOT_APPLICATION_ID"),
       { body: commands }
     );
-    console.log("Commands deployed");
+    console.log("✅ Slash commands deployed!");
   } catch (err) {
     console.error(err);
   }
