@@ -11,6 +11,7 @@ const {
   EmbedBuilder
 } = require("discord.js");
 
+/* ================= CLIENT ================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -22,14 +23,14 @@ const client = new Client({
 const CONFIG = {
   TOKEN: process.env.DISCORD_TOKEN,
 
-  // 📣 Kanaler
+  // Kanaler
   WELCOME_CHANNEL_ID: "1452047332278538373",
   TICKET_PANEL_CHANNEL_ID: "1452057166721581216",
   TICKET_CATEGORY_ID: "1452057139618119821",
   SERVICES_CHANNEL_ID: "1452262876155871232",
   PRICES_CHANNEL_ID: "1452262991847227522",
 
-  // 👮 Staff/Admin
+  // Staff / Admin
   STAFF_ROLE_ID: "1452057264155267242"
 };
 /* ========================================== */
@@ -45,12 +46,11 @@ client.once(Events.ClientReady, async () => {
   const everyone = guild.roles.everyone;
   const staff = guild.roles.cache.get(CONFIG.STAFF_ROLE_ID);
 
-  const ticketCh = guild.channels.cache.get(CONFIG.TICKET_PANEL_CHANNEL_ID);
-  const pricesCh = guild.channels.cache.get(CONFIG.PRICES_CHANNEL_ID);
-  const servicesCh = guild.channels.cache.get(CONFIG.SERVICES_CHANNEL_ID);
+  const lockChannel = async (channelId) => {
+    const ch = guild.channels.cache.get(channelId);
+    if (!ch) return;
 
-  if (ticketCh) {
-    await ticketCh.permissionOverwrites.set([
+    await ch.permissionOverwrites.set([
       {
         id: everyone.id,
         allow: [PermissionsBitField.Flags.ViewChannel],
@@ -58,34 +58,21 @@ client.once(Events.ClientReady, async () => {
       },
       {
         id: staff.id,
-        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
       }
     ]);
-  }
+  };
 
-  if (pricesCh) {
-    await pricesCh.permissionOverwrites.set([
-      {
-        id: everyone.id,
-        allow: [PermissionsBitField.Flags.ViewChannel],
-        deny: [PermissionsBitField.Flags.SendMessages]
-      }
-    ]);
-  }
+  await lockChannel(CONFIG.TICKET_PANEL_CHANNEL_ID);
+  await lockChannel(CONFIG.SERVICES_CHANNEL_ID);
+  await lockChannel(CONFIG.PRICES_CHANNEL_ID);
 
-  if (servicesCh) {
-    await servicesCh.permissionOverwrites.set([
-      {
-        id: everyone.id,
-        allow: [PermissionsBitField.Flags.ViewChannel],
-        deny: [PermissionsBitField.Flags.SendMessages]
-      }
-    ]);
-  }
+  console.log("🔒 Kanalbehörigheter klara");
 
-  console.log("🔒 Kanalbehörigheter satta");
-
-  /* ===== TICKET PANEL ===== */
+  /* ===== TICKET PANEL (SKICKAS EN GÅNG) ===== */
   const panel = await client.channels.fetch(CONFIG.TICKET_PANEL_CHANNEL_ID);
 
   await panel.send({
@@ -93,7 +80,7 @@ client.once(Events.ClientReady, async () => {
       new EmbedBuilder()
         .setTitle("🎟 Svenska Streams – Tickets")
         .setDescription(
-          "Välj vad ditt ärende gäller.\n\n" +
+          "Välj vad ditt ärende gäller:\n\n" +
           "🛒 **Köp** – köp ett konto\n" +
           "🤝 **Samarbete** – partnerskap\n" +
           "❓ **Frågor** – support"
@@ -129,24 +116,25 @@ client.on(Events.GuildMemberAdd, member => {
     `🛒 Tjänster → <#${CONFIG.SERVICES_CHANNEL_ID}>\n` +
     `💰 Priser → <#${CONFIG.PRICES_CHANNEL_ID}>\n` +
     `🎟 Köp → <#${CONFIG.TICKET_PANEL_CHANNEL_ID}>\n\n` +
-    `Klicka på **Köp** i ticket-kanalen för att handla.`
+    `Öppna en ticket för att handla eller få hjälp.`
   );
 });
 
 /* ================= TICKETS ================= */
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
-
   if (!interaction.customId.startsWith("ticket_")) return;
 
   await interaction.deferReply({ ephemeral: true });
 
-  const type =
-    interaction.customId === "ticket_buy"
-      ? "köp"
-      : interaction.customId === "ticket_partner"
-      ? "samarbete"
-      : "frågor";
+  const typeMap = {
+    ticket_buy: "köp",
+    ticket_partner: "samarbete",
+    ticket_question: "frågor"
+  };
+
+  const type = typeMap[interaction.customId];
+  if (!type) return;
 
   const channel = await interaction.guild.channels.create({
     name: `ticket-${type}-${interaction.user.username}`,
@@ -159,11 +147,17 @@ client.on(Events.InteractionCreate, async interaction => {
       },
       {
         id: interaction.user.id,
-        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
       },
       {
         id: CONFIG.STAFF_ROLE_ID,
-        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
       }
     ]
   });
@@ -171,7 +165,7 @@ client.on(Events.InteractionCreate, async interaction => {
   await channel.send(
     `👋 Hej **${interaction.user.username}**!\n\n` +
     `Detta är din **${type}-ticket**.\n` +
-    `Skriv vad du behöver hjälp med så svarar staff snart.`
+    `Beskriv ditt ärende så svarar staff snart.`
   );
 
   await interaction.editReply({
@@ -179,4 +173,5 @@ client.on(Events.InteractionCreate, async interaction => {
   });
 });
 
+/* ================= LOGIN ================= */
 client.login(CONFIG.TOKEN);
