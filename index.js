@@ -48,18 +48,33 @@ const CONFIG = {
 
 /* ================== PRODUKTER ================== */
 const PRODUCTS = {
-  "Spotify Premium ⭐ MOST POPULAR": {
-    "1 Månad": "19 kr",
-    "3 Månader": "39 kr"
+  "⭐ Spotify Premium (MOST POPULAR)": {
+    "1 Month": "19 kr",
+    "3 Months": "39 kr",
+    "6 Months": "59 kr",
+    "12 Months": "89 kr"
   },
-  "Netflix 4K UHD ⭐ MOST POPULAR": {
-    "6 Månader": "39 kr",
-    "12 Månader": "59 kr"
+
+  "⭐ Netflix 4K UHD Premium (MOST POPULAR)": {
+    "6 Months": "39 kr",
+    "12 Months": "59 kr"
   },
-  "Disney+ Premium": {
-    "6 Månader": "39 kr"
+
+  "📺 HBO Max Premium": {
+    "6 Months": "39 kr",
+    "12 Months": "59 kr"
+  },
+
+  "📺 Disney+ Premium": {
+    "6 Months": "39 kr",
+    "12 Months": "59 kr"
+  },
+
+  "🔐 NordVPN Plus": {
+    "12 Months": "49 kr"
   }
 };
+
 
 /* ================== STATE ================== */
 const tickets = new Map();
