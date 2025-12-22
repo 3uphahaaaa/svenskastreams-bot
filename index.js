@@ -35,11 +35,14 @@ const CONFIG = {
   CHANNELS: {
     WELCOME: "1452047332278538373",
     PANEL: "1452057166721581216",
-    CATEGORY: "1452057139618119821",
     ANNOUNCEMENTS: "1452389624801525992",
+    VOUCH: "1452263084646338582",
     SWISH_LOGS: "1452671397871489175",
-    PARTNER_LOGS: "1452624943543226501",
-    VOUCH: "1452263084646338582"
+    PARTNER_LOGS: "1452624943543226501"
+  },
+  CATEGORIES: {
+    BUY: "1452706749340586025",
+    PARTNER: "1452706558226989089"
   },
   ROLES: {
     OWNER: "1452263448921509958",
@@ -55,14 +58,31 @@ const CONFIG = {
   }
 };
 
-/* ================= PRODUCTS ================= */
+/* ================= PRODUCTS (ORÖRDA) ================= */
 const PRODUCTS = {
   "🎵 Spotify Premium": {
     "1 Månad": "19",
-    "3 Månader": "39"
+    "3 Månader": "39",
+    "6 Månader": "59",
+    "12 Månader": "89"
+  },
+  "🎬 Netflix 4K UHD Premium": {
+    "6 Månader": "39",
+    "12 Månader": "59"
   },
   "📺 HBO Max Premium": {
-    "6 Månader": "39"
+    "6 Månader": "39",
+    "12 Månader": "59"
+  },
+  "🍿 Disney+ Premium": {
+    "6 Månader": "39",
+    "12 Månader": "59"
+  },
+  "🔐 NordVPN Plus": {
+    "12 Månader": "49"
+  },
+  "🛡 Malwarebytes Premium": {
+    "12 Månader": "69"
   }
 };
 
@@ -70,11 +90,26 @@ const PRODUCTS = {
 const tickets = new Map();
 const orderId = () => `SS-${Math.floor(100000 + Math.random() * 900000)}`;
 
-/* ================= READY ================= */
+const hasRole = (member, roles) =>
+  member.roles.cache.some(r => roles.includes(r.id));
+
+const SALE_APPROVERS = [
+  CONFIG.ROLES.OWNER,
+  CONFIG.ROLES.ADMIN,
+  CONFIG.ROLES.SELLER
+];
+
+const PARTNER_APPROVERS = [
+  CONFIG.ROLES.OWNER,
+  CONFIG.ROLES.ADMIN,
+  CONFIG.ROLES.PARTNER_MANAGER
+];
+
+/* ================= READY – PANEL ================= */
 client.once(Events.ClientReady, async () => {
   const panel = await client.channels.fetch(CONFIG.CHANNELS.PANEL);
-  const msgs = await panel.messages.fetch({ limit: 10 });
-  msgs.filter(m => m.author.id === client.user.id).forEach(m => m.delete());
+  const msgs = await panel.messages.fetch({ limit: 20 });
+  msgs.filter(m => m.author.id === client.user.id).forEach(m => m.delete().catch(() => {}));
 
   await panel.send({
     embeds: [
@@ -108,7 +143,7 @@ client.on(Events.GuildMemberAdd, async member => {
         .setColor(CONFIG.BRAND.COLOR)
         .setTitle(`👋 Välkommen till ${CONFIG.BRAND.NAME}!`)
         .setDescription(
-          `🛒 **Tjänster:** <#${CONFIG.CHANNELS.PANEL}>\n💰 **Priser:** <#${CONFIG.CHANNELS.PANEL}>\n🎟 **Köp:** <#${CONFIG.CHANNELS.PANEL}>`
+          `🛒 **Tjänster & köp:** <#${CONFIG.CHANNELS.PANEL}>\n🤝 **Samarbete:** via ticket-panelen`
         )
         .setThumbnail(member.user.displayAvatarURL())
         .setTimestamp()
@@ -116,28 +151,39 @@ client.on(Events.GuildMemberAdd, async member => {
   });
 });
 
-/* ================= SCREENSHOT ================= */
+/* ================= SCREENSHOT HANDLER ================= */
 client.on(Events.MessageCreate, async msg => {
+  if (msg.author.bot) return;
   const t = tickets.get(msg.channel.id);
-  if (!t || !t.awaitingScreenshot || msg.author.bot || !msg.attachments.size) return;
+  if (!t || !t.awaitingScreenshot || !msg.attachments.size) return;
 
   const image = msg.attachments.first();
   if (!image.contentType?.startsWith("image/")) return;
 
-  const log = await msg.guild.channels.fetch(
-    t.type === "partner" ? CONFIG.CHANNELS.PARTNER_LOGS : CONFIG.CHANNELS.SWISH_LOGS
+  const logChannel = await msg.guild.channels.fetch(
+    t.type === "partner"
+      ? CONFIG.CHANNELS.PARTNER_LOGS
+      : CONFIG.CHANNELS.SWISH_LOGS
   );
 
-  await log.send({
+  await logChannel.send({
     embeds: [
       new EmbedBuilder()
         .setTitle("📸 Screenshot mottagen")
         .setImage(image.url)
         .setColor(CONFIG.BRAND.COLOR)
+        .addFields(
+          { name: "User", value: `<@${msg.author.id}>`, inline: true },
+          { name: "Typ", value: t.type, inline: true },
+          t.type === "buy"
+            ? { name: "Order", value: `${t.product} – ${t.price} kr`, inline: false }
+            : { name: "Partner-annons", value: t.ad || "Ej ifylld", inline: false }
+        )
     ]
   });
 
   await msg.channel.send({
+    content: "📸 Screenshot mottagen – väntar på godkännande",
     components: [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -147,50 +193,50 @@ client.on(Events.MessageCreate, async msg => {
       )
     ]
   });
+
+  t.awaitingScreenshot = false;
 });
 
 /* ================= INTERACTIONS ================= */
 client.on(Events.InteractionCreate, async interaction => {
   try {
 
-    /* CREATE TICKET */
+    /* ===== CREATE TICKET ===== */
     if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
       await interaction.deferReply({ ephemeral: true });
       const type = interaction.customId.split("_")[1];
 
-      const ch = await interaction.guild.channels.create({
+      const channel = await interaction.guild.channels.create({
         name: `ticket-${type}-${interaction.user.username}`,
         type: ChannelType.GuildText,
-        parent: CONFIG.CHANNELS.CATEGORY,
+        parent: type === "buy" ? CONFIG.CATEGORIES.BUY : CONFIG.CATEGORIES.PARTNER,
         permissionOverwrites: [
           { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
         ]
       });
 
-      tickets.set(ch.id, { userId: interaction.user.id, type });
+      tickets.set(channel.id, { userId: interaction.user.id, type });
 
-      await ch.send(
+      await channel.send(
         type === "buy"
           ? `<@&${CONFIG.ROLES.SELLER}> ny köpticket skapad.`
           : `<@&${CONFIG.ROLES.PARTNER_MANAGER}> ny partner-ticket skapad.`
       );
 
       if (type === "buy") {
-        await ch.send({
+        await channel.send({
           components: [
             new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder()
                 .setCustomId("select_product")
-                .setPlaceholder("Välj konto")
+                .setPlaceholder("🛒 Välj konto")
                 .addOptions(Object.keys(PRODUCTS).map(p => ({ label: p, value: p })))
             )
           ]
         });
-      }
-
-      if (type === "partner") {
-        await ch.send({
+      } else {
+        await channel.send({
           components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -202,10 +248,10 @@ client.on(Events.InteractionCreate, async interaction => {
         });
       }
 
-      return interaction.editReply(`🎟 Ticket skapad: ${ch}`);
+      return interaction.editReply(`🎟 Ticket skapad: ${channel}`);
     }
 
-    /* PRODUCT */
+    /* ===== PRODUCT ===== */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
       const t = tickets.get(interaction.channel.id);
       t.product = interaction.values[0];
@@ -227,13 +273,21 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    /* DURATION */
+    /* ===== DURATION ===== */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
       const t = tickets.get(interaction.channel.id);
       [t.duration, t.price] = interaction.values[0].split("|");
       t.orderId = orderId();
 
       return interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("💳 Betalning")
+            .setDescription(
+              `🆔 Order: ${t.orderId}\n${t.product}\n${t.duration} – ${t.price} kr`
+            )
+            .setColor(CONFIG.BRAND.COLOR)
+        ],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
@@ -243,7 +297,7 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    /* PAY */
+    /* ===== PAYMENT INFO ===== */
     if (interaction.isButton() && ["pay_swish", "pay_ltc"].includes(interaction.customId)) {
       const t = tickets.get(interaction.channel.id);
       t.awaitingScreenshot = true;
@@ -251,15 +305,22 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.update({
         embeds: [
           new EmbedBuilder()
-            .setTitle(interaction.customId === "pay_swish" ? "💳 Swish" : "💳 LTC")
-            .setDescription("📸 Skicka screenshot på betalningen")
+            .setTitle(interaction.customId === "pay_swish" ? "📱 Swish-betalning" : "💎 Litecoin-betalning")
+            .setDescription(
+              interaction.customId === "pay_swish"
+                ? `Nummer: ${CONFIG.PAYMENTS.SWISH}\nSumma: ${t.price} kr\n\n➡️ Betala först\n➡️ Skicka screenshot EFTER betalning`
+                : `Adress: ${CONFIG.PAYMENTS.LTC}\nSumma: ${t.price} kr\n\n➡️ Betala först\n➡️ Skicka screenshot EFTER betalning`
+            )
             .setColor(CONFIG.BRAND.COLOR)
         ]
       });
     }
 
-    /* APPROVE PAYMENT */
+    /* ===== APPROVE PAYMENT ===== */
     if (interaction.isButton() && interaction.customId === "approve_payment") {
+      if (!hasRole(interaction.member, SALE_APPROVERS))
+        return interaction.reply({ content: "❌ Ingen behörighet", ephemeral: true });
+
       await interaction.channel.send({
         components: [
           new ActionRowBuilder().addComponents(
@@ -270,10 +331,11 @@ client.on(Events.InteractionCreate, async interaction => {
           )
         ]
       });
+
       return interaction.reply("✅ Betalning godkänd");
     }
 
-    /* DELIVERY MODAL */
+    /* ===== DELIVERY ===== */
     if (interaction.isButton() && interaction.customId === "deliver_account") {
       const modal = new ModalBuilder()
         .setCustomId("deliver_modal")
@@ -296,7 +358,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const user = await client.users.fetch(t.userId);
 
       await user.send(
-`📦 **Ditt konto**
+`📦 Ditt konto
 ${t.product}
 ${t.duration} – ${t.price} kr
 
@@ -316,7 +378,7 @@ ${t.duration} – ${t.price} kr
       });
     }
 
-    /* CONFIRM WORKING */
+    /* ===== CONFIRM + REVIEW ===== */
     if (interaction.isButton() && interaction.customId === "confirm_working") {
       const modal = new ModalBuilder()
         .setCustomId("review_modal")
@@ -334,15 +396,16 @@ ${t.duration} – ${t.price} kr
       return interaction.showModal(modal);
     }
 
-    /* REVIEW */
     if (interaction.isModalSubmit() && interaction.customId === "review_modal") {
-      const embed = new EmbedBuilder()
-        .setTitle("⭐ Ny Review")
-        .setDescription(interaction.fields.getTextInputValue("text"))
-        .setColor(CONFIG.BRAND.COLOR);
-
       const vouch = await interaction.guild.channels.fetch(CONFIG.CHANNELS.VOUCH);
-      await vouch.send({ embeds: [embed] });
+      await vouch.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("⭐ Ny Review")
+            .setDescription(interaction.fields.getTextInputValue("text"))
+            .setColor(CONFIG.BRAND.COLOR)
+        ]
+      });
 
       const member = await interaction.guild.members.fetch(interaction.user.id);
       await member.roles.add(CONFIG.ROLES.CUSTOMER);
@@ -351,11 +414,11 @@ ${t.duration} – ${t.price} kr
       setTimeout(() => interaction.channel.delete(), 5000);
     }
 
-    /* PARTNER FORM */
+    /* ===== PARTNER FORM ===== */
     if (interaction.isButton() && interaction.customId === "open_partner_form") {
       const modal = new ModalBuilder()
         .setCustomId("partner_form")
-        .setTitle("🤝 Samarbete");
+        .setTitle("🤝 Samarbetsförfrågan");
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(
@@ -370,10 +433,24 @@ ${t.duration} – ${t.price} kr
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
-      const ad = interaction.fields.getTextInputValue("ad");
-      const ch = await interaction.guild.channels.fetch(CONFIG.CHANNELS.ANNOUNCEMENTS);
-      await ch.send(ad);
-      await interaction.reply("✅ Partner-annons postad!");
+      const t = tickets.get(interaction.channel.id);
+      t.invite = interaction.fields.getTextInputValue("invite");
+      t.ad = interaction.fields.getTextInputValue("ad");
+      t.awaitingScreenshot = true;
+
+      return interaction.reply("📨 Förfrågan mottagen. Skicka nu screenshot.");
+    }
+
+    if (interaction.isButton() && interaction.customId === "approve_partner") {
+      if (!hasRole(interaction.member, PARTNER_APPROVERS))
+        return interaction.reply({ content: "❌ Ingen behörighet", ephemeral: true });
+
+      const t = tickets.get(interaction.channel.id);
+      const ann = await interaction.guild.channels.fetch(CONFIG.CHANNELS.ANNOUNCEMENTS);
+
+      await ann.send(`${t.ad}\n\n👉 ${t.invite}`);
+
+      await interaction.reply("✅ Partner godkänd & annons postad");
       setTimeout(() => interaction.channel.delete(), 5000);
     }
 
