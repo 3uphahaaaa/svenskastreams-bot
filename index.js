@@ -1,5 +1,4 @@
 require("dotenv").config();
-const fs = require("fs");
 const {
   Client,
   GatewayIntentBits,
@@ -21,28 +20,33 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
   ]
 });
 
 /* ================= CONFIG ================= */
 const CONFIG = {
-  BRAND: { NAME: "Svenska Streams", COLOR: "#7b3fe4" },
+  BRAND: {
+    NAME: "Svenska Streams",
+    COLOR: "#7b3fe4"
+  },
   CHANNELS: {
+    WELCOME: "1452047332278538373",
     PANEL: "1452057166721581216",
     BUY_CATEGORY: "1452706749340586025",
     PARTNER_CATEGORY: "1452706558226989089",
     ANNOUNCEMENTS: "1452389624801525992",
     VOUCH: "1452263084646338582",
     SWISH_LOGS: "1452671397871489175",
-    PARTNER_LOGS: "1452624943543226501",
-    WELCOME: "1452047332278538373"
+    PARTNER_LOGS: "1452624943543226501"
   },
   ROLES: {
     SELLER: "1452263273528299673",
     PARTNER_MANAGER: "1452672352344342528",
-    CUSTOMER: "1452263553234108548",
-    MEMBER: "1452050878839394355"
+    MEMBER: "1452050878839394355",
+    CUSTOMER: "1452263553234108548"
   },
   PAYMENTS: {
     SWISH: "0736816921",
@@ -78,21 +82,28 @@ const PRODUCTS = {
   }
 };
 
-/* ================= STATE (RAM + fallback) ================= */
+/* ================= STATE ================= */
 const tickets = new Map();
-const orderId = () => `SS-${Math.floor(100000 + Math.random() * 900000)}`;
+
+/* ================= HELPERS ================= */
+const genOrderId = () => `SS-${Math.floor(100000 + Math.random() * 900000)}`;
 
 /* ================= READY ================= */
 client.once(Events.ClientReady, async () => {
+  console.log(`✅ ${CONFIG.BRAND.NAME} online`);
+
   const panel = await client.channels.fetch(CONFIG.CHANNELS.PANEL);
-  const msgs = await panel.messages.fetch({ limit: 10 });
-  for (const m of msgs.values()) if (m.author.id === client.user.id) await m.delete().catch(() => {});
+  const msgs = await panel.messages.fetch({ limit: 20 });
+
+  for (const m of msgs.values()) {
+    if (m.author.id === client.user.id) await m.delete().catch(() => {});
+  }
 
   await panel.send({
     embeds: [
       new EmbedBuilder()
-        .setTitle("🎟 Svenska Streams – Tickets")
-        .setDescription("🛒 Köp konto\n🤝 Samarbete")
+        .setTitle(`🎟 ${CONFIG.BRAND.NAME} – Tickets`)
+        .setDescription("🛒 Köp\n🤝 Samarbete")
         .setColor(CONFIG.BRAND.COLOR)
     ],
     components: [
@@ -102,46 +113,54 @@ client.once(Events.ClientReady, async () => {
       )
     ]
   });
-
-  console.log("✅ Bot online");
 });
 
 /* ================= WELCOME ================= */
 client.on(Events.GuildMemberAdd, async member => {
-  const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
-  if (role) await member.roles.add(role);
+  try {
+    const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
+    if (role) await member.roles.add(role);
 
-  const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
-  if (!ch) return;
+    const channel = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
+    if (!channel) return;
 
-  await ch.send({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(CONFIG.BRAND.COLOR)
-        .setAuthor({ name: Välkommen till ${CONFIG.BRAND.NAME}! })
-        .setDescription(
-          👋 **Välkommen ${member.user.username}!**\n\n +
-          🛒 **Köp:** <#${CONFIG.CHANNELS.PANEL}>\n +
-          🤝 **Samarbete:** <#${CONFIG.CHANNELS.PANEL}>
-        )
-        .setThumbnail(member.user.displayAvatarURL())
-        .setTimestamp()
-    ]
-  });
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(CONFIG.BRAND.COLOR)
+          .setAuthor({
+            name: "Välkommen till Svenska Streams!",
+            iconURL: member.guild.iconURL({ dynamic: true })
+          })
+          .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+          .setDescription(
+            `👋 **Välkommen ${member.user.username}!**\n\n` +
+            `🛒 **Tjänster:** <#${CONFIG.CHANNELS.PANEL}>\n` +
+            `💰 **Priser:** <#${CONFIG.CHANNELS.PANEL}>\n` +
+            `🎟 **Köp:** <#${CONFIG.CHANNELS.PANEL}>`
+          )
+          .setFooter({ text: "Svenska Streams" })
+          .setTimestamp()
+      ]
+    });
+  } catch (err) {
+    console.error("Welcome error:", err);
+  }
 });
-/* ================= SCREENSHOT LOGGER (STABIL) ================= */
+
+/* ================= SCREENSHOT LOGGER ================= */
 client.on(Events.MessageCreate, async msg => {
   if (msg.author.bot) return;
-  if (!msg.attachments.size) return;
+  if (!tickets.has(msg.channel.id)) return;
+  if (msg.attachments.size === 0) return;
 
+  const ticket = tickets.get(msg.channel.id);
   const image = msg.attachments.first();
-  if (!image.contentType?.startsWith("image/")) return;
-
-  const ticket = tickets.get(msg.channel.id) || {};
-  const isPartner = ticket.type === "partner";
 
   const logChannel = await msg.guild.channels.fetch(
-    isPartner ? CONFIG.CHANNELS.PARTNER_LOGS : CONFIG.CHANNELS.SWISH_LOGS
+    ticket.type === "partner"
+      ? CONFIG.CHANNELS.PARTNER_LOGS
+      : CONFIG.CHANNELS.SWISH_LOGS
   );
 
   await logChannel.send({
@@ -149,20 +168,20 @@ client.on(Events.MessageCreate, async msg => {
       new EmbedBuilder()
         .setTitle("📸 Screenshot mottagen")
         .setImage(image.url)
-        .setColor(CONFIG.BRAND.COLOR)
         .addFields(
           { name: "Användare", value: `<@${msg.author.id}>` },
-          { name: "Order-ID", value: ticket.orderId || "Okänd / efter restart" }
+          { name: "Order", value: ticket.orderId || "Partner" }
         )
+        .setColor(CONFIG.BRAND.COLOR)
     ]
   });
 
   await msg.channel.send({
-    content: "🔍 Screenshot mottagen – väntar på manuell godkännande",
+    content: "🔍 Screenshot mottagen – väntar på godkännande",
     components: [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(isPartner ? "approve_partner" : "approve_payment")
+          .setCustomId(ticket.type === "partner" ? "approve_partner" : "approve_payment")
           .setLabel("✅ Godkänn screenshot")
           .setStyle(ButtonStyle.Success)
       )
@@ -176,22 +195,34 @@ client.on(Events.InteractionCreate, async interaction => {
     /* CREATE TICKET */
     if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
       await interaction.deferReply({ ephemeral: true });
+
       const type = interaction.customId.split("_")[1];
+      const category =
+        type === "buy"
+          ? CONFIG.CHANNELS.BUY_CATEGORY
+          : CONFIG.CHANNELS.PARTNER_CATEGORY;
 
       const ch = await interaction.guild.channels.create({
         name: `ticket-${type}-${interaction.user.username}`,
         type: ChannelType.GuildText,
-        parent:
-          type === "buy"
-            ? CONFIG.CHANNELS.BUY_CATEGORY
-            : CONFIG.CHANNELS.PARTNER_CATEGORY,
+        parent: category,
         permissionOverwrites: [
           { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
+          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
+          {
+            id: type === "buy" ? CONFIG.ROLES.SELLER : CONFIG.ROLES.PARTNER_MANAGER,
+            allow: [PermissionsBitField.Flags.ViewChannel]
+          }
         ]
       });
 
       tickets.set(ch.id, { userId: interaction.user.id, type });
+
+      await ch.send(
+        type === "buy"
+          ? `<@&${CONFIG.ROLES.SELLER}> ny köpticket skapad.`
+          : `<@&${CONFIG.ROLES.PARTNER_MANAGER}> ny partner-ticket skapad.`
+      );
 
       if (type === "buy") {
         await ch.send({
@@ -206,7 +237,9 @@ client.on(Events.InteractionCreate, async interaction => {
               new StringSelectMenuBuilder()
                 .setCustomId("select_product")
                 .setPlaceholder("Välj konto")
-                .addOptions(Object.keys(PRODUCTS).map(p => ({ label: p, value: p })))
+                .addOptions(
+                  Object.keys(PRODUCTS).map(p => ({ label: p, value: p }))
+                )
             )
           ]
         });
@@ -216,8 +249,8 @@ client.on(Events.InteractionCreate, async interaction => {
         await ch.send({
           embeds: [
             new EmbedBuilder()
-              .setTitle("🤝 Partner-ansökan")
-              .setDescription("Skicka invite + annons, sedan screenshot")
+              .setTitle("🤝 Samarbete")
+              .setDescription("Skicka er annons + screenshot")
               .setColor(CONFIG.BRAND.COLOR)
           ]
         });
@@ -226,7 +259,7 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.editReply(`🎟 Ticket skapad: ${ch}`);
     }
 
-    /* PRODUCT */
+    /* SELECT PRODUCT */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
       const t = tickets.get(interaction.channel.id);
       t.product = interaction.values[0];
@@ -248,18 +281,19 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    /* DURATION */
+    /* SELECT DURATION */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
       const t = tickets.get(interaction.channel.id);
       [t.duration, t.price] = interaction.values[0].split("|");
-      t.orderId = orderId();
+      t.orderId = genOrderId();
 
       return interaction.update({
         embeds: [
           new EmbedBuilder()
             .setTitle("💳 Välj betalmetod")
             .setDescription(
-              `${t.product}\n${t.duration} – ${t.price}\n\n🆔 ${t.orderId}`
+              `🆔 **Order:** ${t.orderId}\n\n` +
+              `${t.product}\n${t.duration} – ${t.price}`
             )
             .setColor(CONFIG.BRAND.COLOR)
         ],
@@ -272,7 +306,7 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    /* PAY INFO */
+    /* PAY */
     if (interaction.isButton() && interaction.customId === "pay_swish") {
       const t = tickets.get(interaction.channel.id);
       return interaction.update({
@@ -280,7 +314,9 @@ client.on(Events.InteractionCreate, async interaction => {
           new EmbedBuilder()
             .setTitle("📱 Swish-betalning")
             .setDescription(
-              `Nummer: **${CONFIG.PAYMENTS.SWISH}**\nSumma: **${t.price}**\n\n➡️ Betala först\n➡️ Skicka screenshot EFTER`
+              `Nummer: **${CONFIG.PAYMENTS.SWISH}**\n` +
+              `Summa: **${t.price}**\n\n` +
+              `➡️ Betala först\n➡️ Skicka screenshot EFTER`
             )
             .setColor(CONFIG.BRAND.COLOR)
         ]
@@ -294,7 +330,9 @@ client.on(Events.InteractionCreate, async interaction => {
           new EmbedBuilder()
             .setTitle("💳 LTC-betalning")
             .setDescription(
-              `Adress:\n${CONFIG.PAYMENTS.LTC}\n\nSumma: ${t.price}\n\nSkicka screenshot`
+              `Adress:\n${CONFIG.PAYMENTS.LTC}\n\n` +
+              `Summa: **${t.price}**\n\n` +
+              `➡️ Skicka screenshot efter betalning`
             )
             .setColor(CONFIG.BRAND.COLOR)
         ]
