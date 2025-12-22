@@ -36,7 +36,9 @@ const CONFIG = {
     TICKET_PANEL: "1452057166721581216",
     TICKET_CATEGORY: "1452057139618119821",
     ANNOUNCEMENTS: "1452389624801525992",
-    LOGS: "1452624943543226501"
+    LOGS: "1452624943543226501",
+    VOUCH: "1452263084646338582",
+    SALES: "1452285768742600755"
   },
   ROLES: {
     STAFF: "1452057264155267242",
@@ -72,12 +74,6 @@ const PRODUCTS = {
   "🍿 Disney+ Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
-  },
-  "🔐 NordVPN Plus": {
-    "12 Månader": "49 kr"
-  },
-  "🛡️ Malwarebytes Premium": {
-    "12 Månader": "69 kr"
   }
 };
 
@@ -104,12 +100,6 @@ client.once(Events.ClientReady, async () => {
       )
     ]
   });
-});
-
-/* ================= WELCOME ================= */
-client.on(Events.GuildMemberAdd, async member => {
-  const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
-  if (role) await member.roles.add(role);
 });
 
 /* ================= INTERACTIONS ================= */
@@ -172,11 +162,9 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
-    /* ================= SELECT PRODUCT ================= */
+    /* ================= BUY FLOW ================= */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
       t.product = interaction.values[0];
 
       const menu = new StringSelectMenuBuilder()
@@ -189,50 +177,46 @@ client.on(Events.InteractionCreate, async interaction => {
           }))
         );
 
-      await interaction.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🛒 Produkt vald")
-            .setDescription(`**${t.product}**\n\nVälj period:`)
-            .setColor("Green")
-        ],
+      return interaction.update({
         components: [new ActionRowBuilder().addComponents(menu)]
-      });
-
-      const log = await client.channels.fetch(CONFIG.CHANNELS.LOGS);
-      await log.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🛒 Nytt köp påbörjat")
-            .setColor("Green")
-            .addFields(
-              { name: "Kund", value: `<@${t.userId}>`, inline: true },
-              { name: "Produkt", value: t.product, inline: true },
-              { name: "Ticket", value: interaction.channel.toString(), inline: false }
-            )
-            .setTimestamp()
-        ]
       });
     }
 
-    /* ================= SELECT DURATION ================= */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
       const [duration, price] = interaction.values[0].split("|");
       t.duration = duration;
       t.price = price;
 
-      await interaction.update({
+      return interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("💰 Välj betalmetod")
+            .setDescription(`**${t.product}**\n${duration} – ${price}`)
+        ],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("pay_ltc").setLabel("LTC").setStyle(ButtonStyle.Secondary)
+          )
+        ]
+      });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("pay_")) {
+      const t = tickets.get(interaction.channel.id);
+      t.payment = interaction.customId === "pay_swish" ? "Swish" : "LTC";
+
+      return interaction.update({
         embeds: [
           new EmbedBuilder()
             .setTitle("💳 Betalning")
             .setDescription(
-              `**${t.product}**\n${duration} – ${price}\n\n` +
-              `Swish: ${CONFIG.PAYMENTS.SWISH}\nLTC:\n${CONFIG.PAYMENTS.LTC}`
+              `**${t.product}**\n${t.duration} – ${t.price}\n\n` +
+              (t.payment === "Swish"
+                ? `Swish: ${CONFIG.PAYMENTS.SWISH}`
+                : `LTC:\n${CONFIG.PAYMENTS.LTC}`)
             )
-            .setColor("Purple")
         ],
         components: [
           new ActionRowBuilder().addComponents(
@@ -242,22 +226,15 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    /* ================= CONFIRM PAID ================= */
     if (interaction.isButton() && interaction.customId === "confirm_paid") {
-      const modal = new ModalBuilder().setCustomId("deliver").setTitle("📦 Leverera konto");
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("email").setLabel("Email").setStyle(TextInputStyle.Short)),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("password").setLabel("Lösenord").setStyle(TextInputStyle.Short))
-      );
-      return interaction.showModal(modal);
+      return interaction.reply({ content: "⏳ Väntar på leverans...", ephemeral: true });
     }
 
-    /* ================= DELIVER ================= */
+    /* ================= LEVERANS ================= */
     if (interaction.isModalSubmit() && interaction.customId === "deliver") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.reply({ content: "❌ Ticket hittades inte.", ephemeral: true });
-
       const user = await client.users.fetch(t.userId);
+
       await user.send(
 `📦 **Ditt konto**
 ${t.product}
@@ -268,43 +245,56 @@ Pris: ${t.price}
 🔑 ${interaction.fields.getTextInputValue("password")}`
       );
 
-      const role = interaction.guild.roles.cache.get(CONFIG.ROLES.CUSTOMER);
-      if (role) await interaction.member.roles.add(role);
-
-      const log = await client.channels.fetch(CONFIG.CHANNELS.LOGS);
-      await log.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("✅ Köp slutfört")
-            .setColor("Blue")
-            .addFields(
-              { name: "Kund", value: user.tag, inline: true },
-              { name: "Produkt", value: t.product, inline: true },
-              { name: "Pris", value: t.price, inline: true }
-            )
-            .setTimestamp()
+      await interaction.channel.send({
+        content: "✅ Konto skickat. Klicka när det funkar:",
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("confirm_working").setLabel("Kontot funkar").setStyle(ButtonStyle.Success)
+          )
         ]
       });
 
-      await interaction.reply("✅ Levererat. Ticket stängs.");
+      return interaction.reply({ content: "📨 Konto skickat.", ephemeral: true });
+    }
+
+    if (interaction.isButton() && interaction.customId === "confirm_working") {
+      const modal = new ModalBuilder().setCustomId("review").setTitle("⭐ Omdöme");
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId("stars").setLabel("Betyg (1–5)").setStyle(TextInputStyle.Short)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId("text").setLabel("Kommentar").setStyle(TextInputStyle.Paragraph)
+        )
+      );
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "review") {
+      const t = tickets.get(interaction.channel.id);
+      const stars = "⭐".repeat(Math.min(5, Math.max(1, parseInt(interaction.fields.getTextInputValue("stars")))));
+
+      await client.channels.fetch(CONFIG.CHANNELS.VOUCH)
+        .then(ch => ch.send(`**${stars}**\n${t.product} – ${t.price}\n${interaction.fields.getTextInputValue("text")}`));
+
+      await client.channels.fetch(CONFIG.CHANNELS.SALES)
+        .then(ch => ch.send(`✅ ${t.product} – ${t.price}`));
+
+      const role = interaction.guild.roles.cache.get(CONFIG.ROLES.CUSTOMER);
+      if (role) await interaction.member.roles.add(role);
+
+      await interaction.reply("🙏 Tack för ditt omdöme! Ticket stängs.");
       setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
     }
 
-    /* ================= PARTNER FORM ================= */
+    /* ================= PARTNER FLOW ================= */
     if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.reply({ content: "❌ Ticket hittades inte.", ephemeral: true });
-
       t.invite = interaction.fields.getTextInputValue("their_invite");
       t.ad = interaction.fields.getTextInputValue("their_ad");
 
       await interaction.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("📨 Samarbetsförslag")
-            .setDescription(t.ad)
-            .setColor("Orange")
-        ],
+        embeds: [new EmbedBuilder().setTitle("📨 Samarbetsförslag").setDescription(t.ad)],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("partner_approve").setLabel("Godkänn").setStyle(ButtonStyle.Success),
@@ -313,16 +303,11 @@ Pris: ${t.price}
         ]
       });
 
-      await interaction.reply({ content: "✅ Skickat till staff.", ephemeral: true });
+      return interaction.reply({ content: "✅ Skickat till staff.", ephemeral: true });
     }
 
-    /* ================= PARTNER APPROVE ================= */
     if (interaction.isButton() && interaction.customId === "partner_approve") {
-      if (!interaction.member.roles.cache.has(CONFIG.ROLES.STAFF))
-        return interaction.reply({ content: "❌ Endast staff.", ephemeral: true });
-
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
 
       await client.channels.fetch(CONFIG.CHANNELS.ANNOUNCEMENTS)
         .then(ch => ch.send(`${t.ad}\n\n👉 ${t.invite}`));
@@ -330,31 +315,18 @@ Pris: ${t.price}
       const user = await client.users.fetch(t.userId);
       await user.send(`🎬 ${CONFIG.BRAND.NAME}\n👉 ${CONFIG.BRAND.INVITE}`);
 
-      const log = await client.channels.fetch(CONFIG.CHANNELS.LOGS);
-      await log.send(`✅ Samarbete godkänt – ${user.tag}`);
-
-      await interaction.reply("✅ Godkänt. Ticket stängs.");
-      setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
+      return interaction.reply("✅ Samarbete godkänt.");
     }
 
-    /* ================= PARTNER DENY ================= */
     if (interaction.isButton() && interaction.customId === "partner_deny") {
-      const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
-      const user = await client.users.fetch(t.userId);
-      const log = await client.channels.fetch(CONFIG.CHANNELS.LOGS);
-      await log.send(`❌ Samarbete nekad – ${user.tag}`);
-
-      await interaction.reply("❌ Nekad.");
-      setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
+      return interaction.reply("❌ Samarbete nekad.");
     }
 
   } catch (err) {
     console.error("❌ Interaction error:", err);
     if (!interaction.replied && !interaction.deferred) {
       try {
-        await interaction.reply({ content: "⚠️ Ett fel uppstod. Försök igen.", ephemeral: true });
+        await interaction.reply({ content: "⚠️ Ett fel uppstod.", ephemeral: true });
       } catch {}
     }
   }
