@@ -32,6 +32,7 @@ const CONFIG = {
     INVITE: "https://discord.gg/hNRyB2Mewv"
   },
   CHANNELS: {
+    WELCOME: "1452047332278538373",
     TICKET_PANEL: "1452057166721581216",
     TICKET_CATEGORY: "1452057139618119821",
     ANNOUNCEMENTS: "1452389624801525992",
@@ -41,6 +42,7 @@ const CONFIG = {
   },
   ROLES: {
     STAFF: "1452057264155267242",
+    MEMBER: "1452050878839394355",
     CUSTOMER: "1452263553234108548"
   },
   PAYMENTS: {
@@ -90,24 +92,37 @@ client.on(Events.ChannelDelete, channel => {
   if (tickets.has(channel.id)) tickets.delete(channel.id);
 });
 
+/* ================= AUTOROLE + WELCOME ================= */
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
+    if (role) await member.roles.add(role);
+
+    const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
+    if (ch) {
+      ch.send(
+        `👋 Välkommen **${member.user.username}** till **${CONFIG.BRAND.NAME}**!\n\n` +
+        `🎟 Skapa ticket här → <#${CONFIG.CHANNELS.TICKET_PANEL}>`
+      );
+    }
+  } catch {}
+});
+
 /* ================= READY – AUTO PANEL ================= */
 client.once(Events.ClientReady, async () => {
   console.log(`✅ ${CONFIG.BRAND.NAME} online som ${client.user.tag}`);
 
-  const panelChannel = await client.channels.fetch(CONFIG.CHANNELS.TICKET_PANEL).catch(() => null);
-  if (!panelChannel?.isTextBased()) return;
+  const panel = await client.channels.fetch(CONFIG.CHANNELS.TICKET_PANEL).catch(() => null);
+  if (!panel?.isTextBased()) return;
 
-  const messages = await panelChannel.messages.fetch({ limit: 50 });
-  for (const msg of messages.values()) {
-    if (
-      msg.author.id === client.user.id &&
-      msg.embeds[0]?.title?.includes("Tickets")
-    ) {
-      await msg.delete().catch(() => {});
+  const msgs = await panel.messages.fetch({ limit: 50 });
+  for (const m of msgs.values()) {
+    if (m.author.id === client.user.id && m.embeds[0]?.title?.includes("Tickets")) {
+      await m.delete().catch(() => {});
     }
   }
 
-  await panelChannel.send({
+  await panel.send({
     embeds: [
       new EmbedBuilder()
         .setTitle(`🎟 ${CONFIG.BRAND.NAME} – Tickets`)
@@ -116,14 +131,8 @@ client.once(Events.ClientReady, async () => {
     ],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("ticket_buy")
-          .setLabel("🛒 Köp")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId("ticket_partner")
-          .setLabel("🤝 Samarbete")
-          .setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId("ticket_buy").setLabel("🛒 Köp").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("ticket_partner").setLabel("🤝 Samarbete").setStyle(ButtonStyle.Secondary)
       )
     ]
   });
@@ -132,11 +141,7 @@ client.once(Events.ClientReady, async () => {
 /* ================= INTERACTIONS ================= */
 client.on(Events.InteractionCreate, async interaction => {
   try {
-    if (
-      !interaction.isButton() &&
-      !interaction.isStringSelectMenu() &&
-      !interaction.isModalSubmit()
-    ) return;
+    if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return;
 
     /* ===== COOLDOWN ===== */
     if (interaction.isButton()) {
@@ -149,9 +154,7 @@ client.on(Events.InteractionCreate, async interaction => {
     /* ===== CREATE TICKET ===== */
     if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
       const existing = [...tickets.entries()].find(
-        ([id, t]) =>
-          t.userId === interaction.user.id &&
-          interaction.guild.channels.cache.has(id)
+        ([id, t]) => t.userId === interaction.user.id && interaction.guild.channels.cache.has(id)
       );
       if (existing)
         return interaction.reply({ content: "❌ Du har redan en öppen ticket.", ephemeral: true });
@@ -183,67 +186,43 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (type === "partner") {
-        const modal = new ModalBuilder()
-          .setCustomId("partner_form")
-          .setTitle("🤝 Samarbete");
-
+        const modal = new ModalBuilder().setCustomId("partner_form").setTitle("🤝 Samarbete");
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("invite")
-              .setLabel("Deras Discord-invite")
-              .setStyle(TextInputStyle.Short)
+            new TextInputBuilder().setCustomId("invite").setLabel("Deras Discord-invite").setStyle(TextInputStyle.Short)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("ad")
-              .setLabel("Deras annons")
-              .setStyle(TextInputStyle.Paragraph)
+            new TextInputBuilder().setCustomId("ad").setLabel("Deras annons").setStyle(TextInputStyle.Paragraph)
           )
         );
-
         return interaction.showModal(modal);
       }
 
       return interaction.reply({ content: `🎟 Ticket skapad: ${channel}`, ephemeral: true });
     }
 
-    /* ===== BUY FLOW ===== */
+    /* ===== KÖP ===== */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
       t.product = interaction.values[0];
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId("select_duration")
         .setPlaceholder("Välj period")
-        .addOptions(
-          Object.entries(PRODUCTS[t.product]).map(([d, p]) => ({
-            label: `${d} – ${p}`,
-            value: `${d}|${p}`
-          }))
-        );
+        .addOptions(Object.entries(PRODUCTS[t.product]).map(([d, p]) => ({
+          label: `${d} – ${p}`,
+          value: `${d}|${p}`
+        })));
 
-      return interaction.update({
-        components: [new ActionRowBuilder().addComponents(menu)]
-      });
+      return interaction.update({ components: [new ActionRowBuilder().addComponents(menu)] });
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
-      const [duration, price] = interaction.values[0].split("|");
-      t.duration = duration;
-      t.price = price;
+      [t.duration, t.price] = interaction.values[0].split("|");
 
       return interaction.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("💰 Välj betalmetod")
-            .setDescription(`**${t.product}**\n${duration} – ${price}`)
-        ],
+        embeds: [new EmbedBuilder().setTitle("💰 Välj betalmetod").setDescription(`${t.product}\n${t.duration} – ${t.price}`)],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
@@ -255,20 +234,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.isButton() && interaction.customId.startsWith("pay_")) {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
-
       t.payment = interaction.customId === "pay_swish" ? "Swish" : "LTC";
 
       return interaction.update({
         embeds: [
-          new EmbedBuilder()
-            .setTitle("💳 Betalning")
-            .setDescription(
-              `**${t.product}**\n${t.duration} – ${t.price}\n\n` +
-              (t.payment === "Swish"
-                ? `Swish: ${CONFIG.PAYMENTS.SWISH}`
-                : `LTC:\n${CONFIG.PAYMENTS.LTC}`)
-            )
+          new EmbedBuilder().setTitle("💳 Betalning").setDescription(
+            `${t.product}\n${t.duration} – ${t.price}\n\n` +
+            (t.payment === "Swish" ? `Swish: ${CONFIG.PAYMENTS.SWISH}` : `LTC:\n${CONFIG.PAYMENTS.LTC}`)
+          )
         ],
         components: [
           new ActionRowBuilder().addComponents(
@@ -293,28 +266,17 @@ client.on(Events.InteractionCreate, async interaction => {
       if (!interaction.member.roles.cache.has(CONFIG.ROLES.STAFF))
         return interaction.reply({ content: "❌ Endast staff.", ephemeral: true });
 
-      const modal = new ModalBuilder()
-        .setCustomId("deliver")
-        .setTitle("📦 Leverera konto");
-
+      const modal = new ModalBuilder().setCustomId("deliver").setTitle("📦 Leverera konto");
       modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("email").setLabel("Email").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("password").setLabel("Lösenord").setStyle(TextInputStyle.Short)
-        )
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("email").setLabel("Email").setStyle(TextInputStyle.Short)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("password").setLabel("Lösenord").setStyle(TextInputStyle.Short))
       );
-
       return interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "deliver") {
       await interaction.deferReply({ ephemeral: true });
-
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.editReply("❌ Ticket saknas.");
-
       const user = await client.users.fetch(t.userId);
 
       await user.send(
@@ -342,21 +304,15 @@ Pris: ${t.price}
     if (interaction.isButton() && interaction.customId === "confirm_working") {
       const modal = new ModalBuilder().setCustomId("review").setTitle("⭐ Omdöme");
       modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("stars").setLabel("Betyg 1–5").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("text").setLabel("Kommentar").setStyle(TextInputStyle.Paragraph)
-        )
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("stars").setLabel("Betyg 1–5").setStyle(TextInputStyle.Short)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("text").setLabel("Kommentar").setStyle(TextInputStyle.Paragraph))
       );
       return interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "review") {
       await interaction.deferReply({ ephemeral: true });
-
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.editReply("❌ Ticket saknas.");
 
       const stars = "⭐".repeat(Math.min(5, Math.max(1, parseInt(interaction.fields.getTextInputValue("stars")))));
 
@@ -388,12 +344,10 @@ Pris: ${t.price}
       setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
     }
 
-    /* ===== PARTNER FLOW ===== */
+    /* ===== SAMARBETE ===== */
     if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
       await interaction.deferReply({ ephemeral: true });
-
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.editReply("❌ Ticket saknas.");
 
       t.invite = interaction.fields.getTextInputValue("invite");
       t.ad = interaction.fields.getTextInputValue("ad");
@@ -419,13 +373,12 @@ Pris: ${t.price}
 
     if (interaction.isButton() && interaction.customId === "partner_approve") {
       const t = tickets.get(interaction.channel.id);
-      if (!t) return interaction.deferUpdate();
 
       await client.channels.fetch(CONFIG.CHANNELS.ANNOUNCEMENTS)
         .then(ch => ch.send(`${t.ad}\n\n👉 ${t.invite}`));
 
       const user = await client.users.fetch(t.userId);
-      await user.send(`🎬 ${CONFIG.BRAND.NAME}\n👉 ${CONFIG.BRAND.INVITE}`);
+      await user.send(`🎬 **${CONFIG.BRAND.NAME}**\n👉 ${CONFIG.BRAND.INVITE}`);
 
       await interaction.reply("✅ Samarbete godkänt.");
       setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
@@ -437,11 +390,9 @@ Pris: ${t.price}
     }
 
   } catch (err) {
-    console.error("❌ ERROR:", err);
+    console.error(err);
     if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({ content: "⚠️ Ett fel uppstod.", ephemeral: true });
-      } catch {}
+      interaction.reply({ content: "⚠️ Ett fel uppstod.", ephemeral: true }).catch(() => {});
     }
   }
 });
