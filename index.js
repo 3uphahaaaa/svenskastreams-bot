@@ -53,13 +53,13 @@ const CONFIG = {
 
 /* ================= PRODUCTS ================= */
 const PRODUCTS = {
-  "🎵 Spotify Premium": {
+  "🎧 Spotify Premium": {
     "1 Månad": "19 kr",
     "3 Månader": "39 kr",
     "6 Månader": "59 kr",
     "12 Månader": "89 kr"
   },
-  "🎬 Netflix 4K Premium": {
+  "📺 Netflix 4K UHD": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
@@ -67,15 +67,12 @@ const PRODUCTS = {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
-  "🍿 Disney+ Premium": {
+  "📺 Disney+ Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
   "🔐 NordVPN Plus": {
     "12 Månader": "49 kr"
-  },
-  "🛡 Malwarebytes Premium": {
-    "12 Månader": "69 kr"
   }
 };
 
@@ -92,21 +89,19 @@ client.once(Events.ClientReady, async () => {
       new EmbedBuilder()
         .setTitle(`🛡 ${CONFIG.BRAND.NAME}`)
         .setDescription(
-          "🛒 Köp digitala konton\n" +
+          "🛒 Köp digitala premiumkonton\n" +
           "🤝 Partners & samarbeten\n" +
-          "⚡ Snabb & trygg leverans"
+          "⚡ Snabb & trygg leverans via tickets"
         )
         .setColor(CONFIG.BRAND.COLOR)
     ],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("ticket_buy").setLabel("🛒 Köp konto").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("ticket_buy").setLabel("🛒 Köp").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("ticket_partner").setLabel("🤝 Partner").setStyle(ButtonStyle.Secondary)
       )
     ]
   });
-
-  console.log("✅ Bot redo");
 });
 
 /* ================= AUTOROLE + WELCOME ================= */
@@ -130,12 +125,11 @@ client.on(Events.GuildMemberAdd, async member => {
           `🎟 Skapa ticket i <#${CONFIG.CHANNELS.PANEL}>`
         )
         .setColor(CONFIG.BRAND.COLOR)
-        .setThumbnail(member.user.displayAvatarURL())
     ]
   });
 });
 
-/* ================= SCREENSHOT HANDLER ================= */
+/* ================= SCREENSHOT ================= */
 client.on(Events.MessageCreate, async msg => {
   if (msg.author.bot) return;
   if (!msg.channel.name?.startsWith("ticket-")) return;
@@ -148,10 +142,9 @@ client.on(Events.MessageCreate, async msg => {
     await log.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("📸 Screenshot mottagen")
+          .setTitle("📸 Betalning mottagen")
           .setImage(img.url)
           .setColor(CONFIG.BRAND.COLOR)
-          .setTimestamp()
       ]
     });
   }
@@ -159,8 +152,7 @@ client.on(Events.MessageCreate, async msg => {
   await msg.channel.send({
     embeds: [
       new EmbedBuilder()
-        .setTitle("📸 Screenshot mottagen")
-        .setDescription("🔍 Väntar på verifiering av personal.")
+        .setDescription("📸 Screenshot mottagen\n⏳ Väntar på verifiering.")
         .setColor(CONFIG.BRAND.COLOR)
     ],
     components: [
@@ -194,22 +186,20 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    /* PARTNER */
     if (type === "partner") {
       await ch.send({
         embeds: [
           new EmbedBuilder()
             .setTitle("🤝 Partner & Samarbeten")
-            .setDescription(
-              "📄 Skicka in din annons via formuläret.\n" +
-              "🕒 **Status:** Väntar på granskning."
-            )
+            .setDescription("📄 Skicka in din annons via formuläret.")
             .setColor(CONFIG.BRAND.COLOR)
         ],
         components: [
           new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("open_partner_form").setLabel("📄 Skicka annons").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("partner_accept").setLabel("✅ Godkänn").setStyle(ButtonStyle.Success)
+            new ButtonBuilder()
+              .setCustomId("open_partner_form")
+              .setLabel("📄 Skicka annons")
+              .setStyle(ButtonStyle.Primary)
           )
         ]
       });
@@ -217,12 +207,11 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.editReply(`🤝 Partner-ticket skapad: ${ch}`);
     }
 
-    /* BUY */
     await ch.send({
       embeds: [
         new EmbedBuilder()
           .setTitle("🛒 Köp konto")
-          .setDescription("Välj produkt nedan")
+          .setDescription("Välj produkt")
           .setColor(CONFIG.BRAND.COLOR)
       ],
       components: [
@@ -268,15 +257,20 @@ client.on(Events.InteractionCreate, async interaction => {
   /* ===== SELECT DURATION ===== */
   if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
     const [product, duration, price] = interaction.values[0].split("|");
-    const oid = orderId();
-    interaction.channel.orderData = { product, duration, price, orderId: oid };
+    interaction.channel.orderData = {
+      product,
+      duration,
+      price,
+      orderId: orderId(),
+      seller: interaction.member.displayName
+    };
 
     return interaction.update({
       embeds: [
         new EmbedBuilder()
           .setTitle("💳 Betalning")
           .setDescription(
-            `🧾 **Order:** ${oid}\n\n` +
+            `🧾 Order: **${interaction.channel.orderData.orderId}**\n\n` +
             `${product}\n${duration}\n💰 ${price}`
           )
           .setColor(CONFIG.BRAND.COLOR)
@@ -298,8 +292,7 @@ client.on(Events.InteractionCreate, async interaction => {
         new EmbedBuilder()
           .setTitle("📱 Swish-betalning")
           .setDescription(
-            `🧾 Order: ${d.orderId}\n` +
-            `💰 Summa: ${d.price}\n\n` +
+            `🧾 Order: ${d.orderId}\n💰 Summa: ${d.price}\n\n` +
             `Swish till **${CONFIG.PAYMENTS.SWISH}**\n\n` +
             "📸 Skicka screenshot på betalningen"
           )
@@ -336,10 +329,18 @@ client.on(Events.InteractionCreate, async interaction => {
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("email").setLabel("Email").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("email")
+          .setLabel("Email")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("password").setLabel("Lösenord").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("password")
+          .setLabel("Lösenord")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
       )
     );
 
@@ -358,15 +359,18 @@ client.on(Events.InteractionCreate, async interaction => {
       const pdf = Buffer.concat(buffers);
       await user.send({
         content:
-          `📦 **Ditt konto är levererat**\n\n` +
-          `${d.product}\n${d.duration}\n💰 ${d.price}\n🧾 Order: ${d.orderId}`,
+          `📦 **Leverans klar**\n\n` +
+          `Produkt: ${d.product}\n` +
+          `Period: ${d.duration}\n` +
+          `Pris: ${d.price}\n` +
+          `Order: ${d.orderId}`,
         files: [new AttachmentBuilder(pdf, { name: `kvitto-${d.orderId}.pdf` })]
       });
     });
 
     doc.fontSize(18).text("Svenska Streams – Kvitto", { align: "center" });
     doc.moveDown();
-    doc.fontSize(12).text(`Order: ${d.orderId}`);
+    doc.text(`Order: ${d.orderId}`);
     doc.text(`Produkt: ${d.product}`);
     doc.text(`Period: ${d.duration}`);
     doc.text(`Pris: ${d.price}`);
@@ -383,42 +387,60 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    return interaction.reply({ ephemeral: true, content: "📦 Leverans klar." });
+    return interaction.reply({ ephemeral: true, content: "📦 Leverans skickad." });
   }
 
-  /* ===== REVIEW ===== */
+  /* ===== REVIEW MODAL ===== */
   if (interaction.isButton() && interaction.customId === "confirm_working") {
     const modal = new ModalBuilder()
       .setCustomId("review_modal")
-      .setTitle("⭐ Lämna omdöme");
+      .setTitle("💜 Lämna ett omdöme");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("stars").setLabel("Betyg (1–5 ⭐)").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("stars")
+          .setLabel("Betyg (1–5 ⭐)")
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder("5")
+          .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("quick").setLabel("Snabba ord").setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("review").setLabel("Din upplevelse").setStyle(TextInputStyle.Paragraph)
+        new TextInputBuilder()
+          .setCustomId("review")
+          .setLabel("Omdöme (t.ex. snabbt och bra 10/10)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
       )
     );
 
     return interaction.showModal(modal);
   }
 
+  /* ===== REVIEW SUBMIT ===== */
   if (interaction.isModalSubmit() && interaction.customId === "review_modal") {
+    const d = interaction.channel.orderData;
     const stars = Math.max(1, Math.min(5, parseInt(interaction.fields.getTextInputValue("stars"))));
-    const quick = interaction.fields.getTextInputValue("quick");
-    const text = interaction.fields.getTextInputValue("review");
+    const review = interaction.fields.getTextInputValue("review");
+    const starStr = "⭐".repeat(stars);
 
     const vouch = await interaction.guild.channels.fetch(CONFIG.CHANNELS.VOUCH);
     await vouch.send({
       embeds: [
         new EmbedBuilder()
           .setTitle("🛡 Trusted Seller – Order Completed")
-          .setDescription(`⭐ ${stars}/5\n${quick}\n"${text}"`)
+          .setDescription(
+            `${starStr}\n\n` +
+            `💬 *"${review}"*`
+          )
+          .addFields(
+            { name: "🛒 Produkt", value: d.product, inline: true },
+            { name: "💰 Pris", value: d.price, inline: true },
+            { name: "👤 Kund", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "🧑‍💼 Säljare", value: d.seller || "Svenska Streams", inline: true }
+          )
           .setColor(CONFIG.BRAND.COLOR)
+          .setTimestamp()
       ]
     });
 
@@ -430,61 +452,6 @@ client.on(Events.InteractionCreate, async interaction => {
     setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
   }
 
-  /* ===== PARTNER FORM ===== */
-  if (interaction.isButton() && interaction.customId === "open_partner_form") {
-    const modal = new ModalBuilder()
-      .setCustomId("partner_form")
-      .setTitle("🤝 Partneransökan");
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("server").setLabel("Server / Företag").setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("members").setLabel("Antal medlemmar").setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("offer").setLabel("Erbjudande").setStyle(TextInputStyle.Paragraph)
-      )
-    );
-
-    return interaction.showModal(modal);
-  }
-
-  if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
-    const log = await interaction.guild.channels.fetch(CONFIG.CHANNELS.PARTNER_LOGS);
-    await log.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("📄 Ny partneransökan")
-          .addFields(
-            { name: "Server", value: interaction.fields.getTextInputValue("server") },
-            { name: "Medlemmar", value: interaction.fields.getTextInputValue("members") },
-            { name: "Erbjudande", value: interaction.fields.getTextInputValue("offer") }
-          )
-          .setColor(CONFIG.BRAND.COLOR)
-      ]
-    });
-
-    return interaction.reply({ ephemeral: true, content: "🙏 Partneransökan skickad." });
-  }
-
-  if (interaction.isButton() && interaction.customId === "partner_accept") {
-    if (!interaction.member.roles.cache.has(CONFIG.ROLES.PARTNER_MANAGER)) {
-      return interaction.reply({ ephemeral: true, content: "❌ Endast partneransvarig." });
-    }
-
-    await interaction.channel.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("✅ Partner godkänd")
-          .setDescription("📸 Skicka bildbevis när annonsen är publicerad.")
-          .setColor(CONFIG.BRAND.COLOR)
-      ]
-    });
-
-    return interaction.reply({ ephemeral: true, content: "Partner godkänd." });
-  }
 });
 
 /* ================= LOGIN ================= */
