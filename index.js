@@ -99,14 +99,29 @@ client.on(Events.GuildMemberAdd, async member => {
     if (role) await member.roles.add(role);
 
     const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
-    if (ch) {
-      ch.send(
-        `👋 Välkommen **${member.user.username}** till **${CONFIG.BRAND.NAME}**!\n\n` +
-        `🎟 Skapa ticket här → <#${CONFIG.CHANNELS.TICKET_PANEL}>`
-      );
-    }
-  } catch {}
+    if (!ch) return;
+
+    const embed = new EmbedBuilder()
+      .setColor("Green")
+      .setAuthor({
+        name: `Välkommen till ${CONFIG.BRAND.NAME}!`,
+        iconURL: member.guild.iconURL({ dynamic: true })
+      })
+      .setDescription(
+        `👋 **Välkommen ${member.user.username}!**\n\n` +
+        `🛒 **Tjänster:** <#${CONFIG.CHANNELS.SERVICES ?? CONFIG.CHANNELS.TICKET_PANEL}>\n` +
+        `💰 **Priser:** <#${CONFIG.CHANNELS.PRICES ?? CONFIG.CHANNELS.TICKET_PANEL}>\n` +
+        `🎟 **Köp:** <#${CONFIG.CHANNELS.TICKET_PANEL}>`
+      )
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+      .setTimestamp();
+
+    await ch.send({ embeds: [embed] });
+  } catch (err) {
+    console.error("Welcome error:", err);
+  }
 });
+
 
 /* ================= READY – AUTO PANEL ================= */
 client.once(Events.ClientReady, async () => {
@@ -173,6 +188,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       tickets.set(channel.id, { userId: interaction.user.id, type });
 
+      /* === BUY === */
       if (type === "buy") {
         const menu = new StringSelectMenuBuilder()
           .setCustomId("select_product")
@@ -185,23 +201,33 @@ client.on(Events.InteractionCreate, async interaction => {
         });
       }
 
+      /* === PARTNER === */
       if (type === "partner") {
-        const modal = new ModalBuilder().setCustomId("partner_form").setTitle("🤝 Samarbete");
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("invite").setLabel("Deras Discord-invite").setStyle(TextInputStyle.Short)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("ad").setLabel("Deras annons").setStyle(TextInputStyle.Paragraph)
-          )
-        );
-        return interaction.showModal(modal);
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🤝 Samarbetsförfrågan")
+              .setDescription(
+                "Vänligen fyll i formuläret nedan med er annons.\n" +
+                "En samarbetsansvarig återkommer så snabbt som möjligt."
+              )
+              .setColor("Orange")
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("open_partner_form")
+                .setLabel("📨 Skicka samarbetsförfrågan")
+                .setStyle(ButtonStyle.Primary)
+            )
+          ]
+        });
       }
 
       return interaction.reply({ content: `🎟 Ticket skapad: ${channel}`, ephemeral: true });
     }
 
-    /* ===== KÖP ===== */
+    /* ===== BUY FLOW ===== */
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
       const t = tickets.get(interaction.channel.id);
       t.product = interaction.values[0];
@@ -344,7 +370,31 @@ Pris: ${t.price}
       setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
     }
 
-    /* ===== SAMARBETE ===== */
+    /* ===== PARTNER FLOW ===== */
+    if (interaction.isButton() && interaction.customId === "open_partner_form") {
+      const modal = new ModalBuilder()
+        .setCustomId("partner_form")
+        .setTitle("🤝 Samarbetsförfrågan");
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("invite")
+            .setLabel("Discord-invite till er server")
+            .setPlaceholder("https://discord.gg/xxxx")
+            .setStyle(TextInputStyle.Short)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("ad")
+            .setLabel("Er annons (den text vi ska posta)")
+            .setStyle(TextInputStyle.Paragraph)
+        )
+      );
+
+      return interaction.showModal(modal);
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
       await interaction.deferReply({ ephemeral: true });
       const t = tickets.get(interaction.channel.id);
@@ -356,9 +406,10 @@ Pris: ${t.price}
         embeds: [
           new EmbedBuilder()
             .setTitle("📨 Samarbetsförslag")
-            .setDescription(t.ad)
-            .addFields({ name: "Invite", value: t.invite })
-            .setColor("Orange")
+            .addFields(
+              { name: "Invite", value: t.invite },
+              { name: "Annons", value: t.ad }
+            )
         ],
         components: [
           new ActionRowBuilder().addComponents(
