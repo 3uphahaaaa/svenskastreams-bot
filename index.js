@@ -203,54 +203,98 @@ client.on(Events.MessageCreate, async msg => {
   });
 });
 
-/* ================= INTERACTIONS ================= */
-client.on(Events.InteractionCreate, async i => {
+//* ================= INTERACTIONS ================= */
+client.on(Events.InteractionCreate, async interaction => {
   try {
-    if (!i.isButton() && !i.isStringSelectMenu() && !i.isModalSubmit()) return;
+    if (
+      !interaction.isButton() &&
+      !interaction.isStringSelectMenu() &&
+      !interaction.isModalSubmit()
+    ) return;
 
-    /* CREATE TICKET */
-    if (i.isButton() && i.customId.startsWith("ticket_")) {
-      await i.deferReply({ ephemeral: true });
-      const type = i.customId.split("_")[1];
+    /* ========== CREATE TICKET ========== */
+    if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
+      await interaction.deferReply({ ephemeral: true });
 
-      const ch = await i.guild.channels.create({
-        name: `ticket-${type}-${i.user.username}`,
+      const type = interaction.customId.split("_")[1];
+
+      const channel = await interaction.guild.channels.create({
+        name: `ticket-${type}-${interaction.user.username}`,
         type: ChannelType.GuildText,
         parent: CONFIG.CHANNELS.CATEGORY,
         permissionOverwrites: [
-          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
+          { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
           {
-            id: type === "buy" ? CONFIG.ROLES.SELLER : CONFIG.ROLES.PARTNER_MANAGER,
+            id: type === "buy"
+              ? CONFIG.ROLES.SELLER
+              : CONFIG.ROLES.PARTNER_MANAGER,
             allow: [PermissionsBitField.Flags.ViewChannel]
           }
         ]
       });
 
-      tickets.set(ch.id, { userId: i.user.id, type });
+      tickets.set(channel.id, { userId: interaction.user.id, type });
 
+      await channel.send(
+        type === "buy"
+          ? `<@&${CONFIG.ROLES.SELLER}> ny köpticket skapad.`
+          : `<@&${CONFIG.ROLES.PARTNER_MANAGER}> ny partner-ticket skapad.`
+      );
+
+      /* BUY → PRODUCT MENU */
       if (type === "buy") {
-        ch.send({
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId("select_product")
+          .setPlaceholder("🛒 Välj vilket konto du vill köpa")
+          .addOptions(
+            Object.keys(PRODUCTS).map(p => ({ label: p, value: p }))
+          );
+
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🛒 Köp konto")
+              .setDescription("Välj vilket konto du vill köpa.")
+              .setColor(CONFIG.BRAND.COLOR)
+          ],
+          components: [new ActionRowBuilder().addComponents(menu)]
+        });
+      }
+
+      /* PARTNER → FORM BUTTON */
+      if (type === "partner") {
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🤝 Samarbetsförfrågan")
+              .setDescription("Skicka invite + annons via formuläret.")
+              .setColor(CONFIG.BRAND.COLOR)
+          ],
           components: [
             new ActionRowBuilder().addComponents(
-              new StringSelectMenuBuilder()
-                .setCustomId("select_product")
-                .setPlaceholder("Välj konto")
-                .addOptions(Object.keys(PRODUCTS).map(p => ({ label: p, value: p })))
+              new ButtonBuilder()
+                .setCustomId("open_partner_form")
+                .setLabel("📨 Skicka samarbetsförfrågan")
+                .setStyle(ButtonStyle.Primary)
             )
           ]
         });
       }
 
-      return i.editReply(`🎟 Ticket skapad: ${ch}`);
+      return interaction.editReply({ content: `🎟 Ticket skapad: ${channel}` });
     }
 
-    /* PRODUCT */
-    if (i.isStringSelectMenu() && i.customId === "select_product") {
-      const t = tickets.get(i.channel.id);
-      t.product = i.values[0];
+    /* ========== PRODUCT SELECT ========== */
+    if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
+      await interaction.deferUpdate();
 
-      return i.update({
+      const t = tickets.get(interaction.channel.id);
+      if (!t) return;
+
+      t.product = interaction.values[0];
+
+      await interaction.channel.send({
         components: [
           new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
@@ -267,13 +311,26 @@ client.on(Events.InteractionCreate, async i => {
       });
     }
 
-    /* DURATION */
-    if (i.isStringSelectMenu() && i.customId === "select_duration") {
-      const t = tickets.get(i.channel.id);
-      [t.duration, t.price] = i.values[0].split("|");
+    /* ========== DURATION SELECT ========== */
+    if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
+      await interaction.deferUpdate();
+
+      const t = tickets.get(interaction.channel.id);
+      if (!t) return;
+
+      [t.duration, t.price] = interaction.values[0].split("|");
       t.orderId = orderId();
 
-      return i.update({
+      await interaction.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("💳 Välj betalmetod")
+            .setDescription(
+              `🆔 **Order:** ${t.orderId}\n\n` +
+              `${t.product}\n${t.duration} – ${t.price}`
+            )
+            .setColor(CONFIG.BRAND.COLOR)
+        ],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
@@ -282,6 +339,79 @@ client.on(Events.InteractionCreate, async i => {
         ]
       });
     }
+
+    /* ========== PAY SWISH ========== */
+    if (interaction.isButton() && interaction.customId === "pay_swish") {
+      await interaction.deferUpdate();
+
+      const t = tickets.get(interaction.channel.id);
+      t.payment = "Swish";
+
+      await interaction.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("💳 Swish-betalning")
+            .setDescription(
+              `📱 **Nummer:** ${CONFIG.PAYMENTS.SWISH}\n` +
+              `💰 **Summa:** ${t.price}\n\n` +
+              `➡️ Gör betalningen\n` +
+              `➡️ Skicka **screenshot här i chatten**`
+            )
+            .setColor(CONFIG.BRAND.COLOR)
+        ]
+      });
+    }
+
+    /* ========== PAY LTC ========== */
+    if (interaction.isButton() && interaction.customId === "pay_ltc") {
+      await interaction.deferUpdate();
+
+      const t = tickets.get(interaction.channel.id);
+      t.payment = "LTC";
+
+      await interaction.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("💳 LTC-betalning")
+            .setDescription(
+              `🔐 **Adress:** ${CONFIG.PAYMENTS.LTC}\n` +
+              `💰 **Summa:** ${t.price}\n\n` +
+              `➡️ Skicka betalningen\n` +
+              `➡️ Skicka **screenshot här i chatten**`
+            )
+            .setColor(CONFIG.BRAND.COLOR)
+        ]
+      });
+    }
+
+    /* ========== PARTNER FORM ========== */
+    if (interaction.isButton() && interaction.customId === "open_partner_form") {
+      const modal = new ModalBuilder()
+        .setCustomId("partner_form")
+        .setTitle("🤝 Samarbetsförfrågan");
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("invite")
+            .setLabel("Discord-invite")
+            .setStyle(TextInputStyle.Short)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("ad")
+            .setLabel("Er annons")
+            .setStyle(TextInputStyle.Paragraph)
+        )
+      );
+
+      return interaction.showModal(modal);
+    }
+
+  } catch (err) {
+    console.error("Interaction error:", err);
+  }
+});
 
     /* PAY */
     /* ---------- PAYMENT ---------- */
