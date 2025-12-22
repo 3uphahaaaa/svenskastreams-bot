@@ -224,76 +224,86 @@ client.on(Events.InteractionCreate, async interaction => {
     ) return;
 
     /* ---------- CREATE TICKET ---------- */
-    if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
-      const type = interaction.customId.split("_")[1];
+if (interaction.isButton() && interaction.customId.startsWith("ticket_")) {
+  await interaction.deferReply({ ephemeral: true });
 
-      const ch = await interaction.guild.channels.create({
-        name: `ticket-${type}-${interaction.user.username}`,
-        type: ChannelType.GuildText,
-        parent: CONFIG.CHANNELS.CATEGORY,
-        permissionOverwrites: [
-          { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
-        ]
-      });
+  const type = interaction.customId.split("_")[1];
 
-      tickets.set(ch.id, { userId: interaction.user.id, type });
+  const ch = await interaction.guild.channels.create({
+    name: `ticket-${type}-${interaction.user.username}`,
+    type: ChannelType.GuildText,
+    parent: CONFIG.CHANNELS.CATEGORY,
+    permissionOverwrites: [
+      { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+      { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
+      {
+        id:
+          type === "buy"
+            ? CONFIG.ROLES.SELLER
+            : CONFIG.ROLES.PARTNER_MANAGER,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      }
+    ]
+  });
 
-      const ping =
-        type === "buy"
-          ? `<@&${CONFIG.ROLES.SELLER}>`
-          : `<@&${CONFIG.ROLES.PARTNER_MANAGER}>`;
+  tickets.set(ch.id, { userId: interaction.user.id, type });
 
-      await ch.send(`${ping} ny ticket skapad.`);
-      return interaction.reply({ content: `🎟 Ticket skapad: ${ch}`, ephemeral: true });
-    }
+  await ch.send(
+    type === "buy"
+      ? `<@&${CONFIG.ROLES.SELLER}> ny köpticket skapad.`
+      : `<@&${CONFIG.ROLES.PARTNER_MANAGER}> ny partner-ticket skapad.`
+  );
 
-    /* ---------- PRODUCT SELECT ---------- */
-    if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
-      const t = tickets.get(interaction.channel.id);
-      t.product = interaction.values[0];
+  // 🛒 KÖP → PRODUKTMENY
+  if (type === "buy") {
+    const productMenu = new StringSelectMenuBuilder()
+      .setCustomId("select_product")
+      .setPlaceholder("🛒 Välj vilket konto du vill köpa")
+      .addOptions(
+        Object.keys(PRODUCTS).map(p => ({
+          label: p,
+          value: p
+        }))
+      );
 
-      return interaction.update({
-        components: [
-          new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId("select_duration")
-              .setPlaceholder("Välj period")
-              .addOptions(
-                Object.entries(PRODUCTS[t.product]).map(([d, p]) => ({
-                  label: `${d} – ${p}`,
-                  value: `${d}|${p}`
-                }))
-              )
+    await ch.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🛒 Köp konto")
+          .setDescription("Välj vilket konto du vill köpa nedan.")
+          .setColor(CONFIG.BRAND.COLOR)
+      ],
+      components: [new ActionRowBuilder().addComponents(productMenu)]
+    });
+  }
+
+  // 🤝 PARTNER → FORM
+  if (type === "partner") {
+    await ch.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🤝 Samarbetsförfrågan")
+          .setDescription(
+            "Skicka in er invite och er annons.\nEfter godkänd screenshot postas er annons automatiskt."
           )
-        ]
-      });
-    }
+          .setColor(CONFIG.BRAND.COLOR)
+      ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("open_partner_form")
+            .setLabel("📨 Skicka samarbetsförfrågan")
+            .setStyle(ButtonStyle.Primary)
+        )
+      ]
+    });
+  }
 
-    /* ---------- DURATION SELECT ---------- */
-    if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
-      const t = tickets.get(interaction.channel.id);
-      [t.duration, t.price] = interaction.values[0].split("|");
-      t.orderId = orderId();
+  await interaction.editReply({
+    content: `🎟 Ticket skapad: ${ch}`
+  });
+}
 
-      return interaction.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("💳 Betalning")
-            .setDescription(
-              `🆔 **Order:** ${t.orderId}\n\n` +
-              `${t.product}\n${t.duration} – ${t.price}`
-            )
-            .setColor(CONFIG.BRAND.COLOR)
-        ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("pay_ltc").setLabel("LTC").setStyle(ButtonStyle.Secondary)
-          )
-        ]
-      });
-    }
 
     /* ---------- PAYMENT ---------- */
     if (interaction.isButton() && interaction.customId === "pay_swish") {
