@@ -55,7 +55,6 @@ const CONFIG = {
   }
 };
 
-/* ================= PRODUKTER ================= */
 const PRODUCTS = {
   "🎵 Spotify Premium": {
     "1 Månad": "19 kr",
@@ -63,19 +62,31 @@ const PRODUCTS = {
     "6 Månader": "59 kr",
     "12 Månader": "89 kr"
   },
+
   "🎬 Netflix 4K UHD Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
+
   "📺 HBO Max Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
   },
+
   "🍿 Disney+ Premium": {
     "6 Månader": "39 kr",
     "12 Månader": "59 kr"
+  },
+
+  "🔐 NordVPN Plus": {
+    "12 Månader": "49 kr"
+  },
+
+  "🛡️ Malwarebytes Premium": {
+    "12 Månader": "69 kr"
   }
 };
+
 
 /* ================= STATE ================= */
 const tickets = new Map();
@@ -107,7 +118,6 @@ client.on(Events.InteractionCreate, async interaction => {
   try {
     if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return;
 
-    /* ===== COOLDOWN ===== */
     if (interaction.isButton()) {
       if (cooldown.has(interaction.user.id))
         return interaction.reply({ content: "⏳ Vänta lite.", ephemeral: true });
@@ -177,9 +187,7 @@ client.on(Events.InteractionCreate, async interaction => {
           }))
         );
 
-      return interaction.update({
-        components: [new ActionRowBuilder().addComponents(menu)]
-      });
+      return interaction.update({ components: [new ActionRowBuilder().addComponents(menu)] });
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
@@ -189,11 +197,7 @@ client.on(Events.InteractionCreate, async interaction => {
       t.price = price;
 
       return interaction.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("💰 Välj betalmetod")
-            .setDescription(`**${t.product}**\n${duration} – ${price}`)
-        ],
+        embeds: [new EmbedBuilder().setTitle("💰 Välj betalmetod").setDescription(`**${t.product}**\n${duration} – ${price}`)],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("pay_swish").setLabel("Swish").setStyle(ButtonStyle.Primary),
@@ -227,10 +231,32 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.isButton() && interaction.customId === "confirm_paid") {
-      return interaction.reply({ content: "⏳ Väntar på leverans...", ephemeral: true });
+      return interaction.update({
+        content: "⏳ Väntar på leverans...",
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("deliver_account")
+              .setLabel("📦 Leverera konto")
+              .setStyle(ButtonStyle.Primary)
+          )
+        ]
+      });
     }
 
-    /* ================= LEVERANS ================= */
+    /* ================= STAFF LEVERANS ================= */
+    if (interaction.isButton() && interaction.customId === "deliver_account") {
+      if (!interaction.member.roles.cache.has(CONFIG.ROLES.STAFF))
+        return interaction.reply({ content: "❌ Endast staff.", ephemeral: true });
+
+      const modal = new ModalBuilder().setCustomId("deliver").setTitle("📦 Leverera konto");
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("email").setLabel("Email").setStyle(TextInputStyle.Short)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("password").setLabel("Lösenord").setStyle(TextInputStyle.Short))
+      );
+      return interaction.showModal(modal);
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === "deliver") {
       const t = tickets.get(interaction.channel.id);
       const user = await client.users.fetch(t.userId);
@@ -246,7 +272,7 @@ Pris: ${t.price}
       );
 
       await interaction.channel.send({
-        content: "✅ Konto skickat. Klicka när det funkar:",
+        content: "✅ Konto skickat. Bekräfta när det funkar:",
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("confirm_working").setLabel("Kontot funkar").setStyle(ButtonStyle.Success)
@@ -260,12 +286,8 @@ Pris: ${t.price}
     if (interaction.isButton() && interaction.customId === "confirm_working") {
       const modal = new ModalBuilder().setCustomId("review").setTitle("⭐ Omdöme");
       modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("stars").setLabel("Betyg (1–5)").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("text").setLabel("Kommentar").setStyle(TextInputStyle.Paragraph)
-        )
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("stars").setLabel("Betyg (1–5)").setStyle(TextInputStyle.Short)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("text").setLabel("Kommentar").setStyle(TextInputStyle.Paragraph))
       );
       return interaction.showModal(modal);
     }
@@ -287,7 +309,7 @@ Pris: ${t.price}
       setTimeout(() => interaction.channel.delete(), CONFIG.AUTO.CLOSE_TICKET_AFTER * 1000);
     }
 
-    /* ================= PARTNER FLOW ================= */
+    /* ================= PARTNER FLOW (ORÖRT) ================= */
     if (interaction.isModalSubmit() && interaction.customId === "partner_form") {
       const t = tickets.get(interaction.channel.id);
       t.invite = interaction.fields.getTextInputValue("their_invite");
