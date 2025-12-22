@@ -133,21 +133,36 @@ client.once(Events.ClientReady, async () => {
 });
 
 /* ================= WELCOME ================= */
-client.on(Events.GuildMemberAdd, async m => {
-  const r = m.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
-  if (r) await m.roles.add(r);
-  const ch = m.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
-  if (!ch) return;
-  ch.send({
-    embeds: [
-      new EmbedBuilder()
-        .setAuthor({ name: `Välkommen till ${CONFIG.BRAND.NAME}!` })
-        .setDescription("🎟 Skapa en ticket för köp eller samarbete")
-        .setThumbnail(m.user.displayAvatarURL())
-        .setColor(CONFIG.BRAND.COLOR)
-    ]
-  });
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    // Ge medlemsroll automatiskt
+    const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
+    if (role) await member.roles.add(role);
+
+    const channel = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+      .setColor(CONFIG.BRAND.COLOR)
+      .setAuthor({
+        name: `Välkommen till ${CONFIG.BRAND.NAME}!`,
+        iconURL: member.guild.iconURL({ dynamic: true })
+      })
+      .setDescription(
+        `👋 **Välkommen ${member.user.username}!**\n\n` +
+        `🛒 **Tjänster:** <#${CONFIG.CHANNELS.PANEL}>\n` +
+        `💰 **Priser:** <#${CONFIG.CHANNELS.PANEL}>\n` +
+        `🎟 **Köp:** <#${CONFIG.CHANNELS.PANEL}>`
+      )
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.error("Welcome error:", err);
+  }
 });
+
 
 /* ================= SCREENSHOT LOGGER ================= */
 client.on(Events.MessageCreate, async msg => {
@@ -269,11 +284,21 @@ client.on(Events.InteractionCreate, async i => {
     }
 
     /* PAY */
-    if (i.isButton() && (i.customId === "pay_swish" || i.customId === "pay_ltc")) {
-      const t = tickets.get(i.channel.id);
-      t.payment = i.customId === "pay_swish" ? "Swish" : "LTC";
-      return i.reply({ content: "📸 Skicka screenshot på betalningen", ephemeral: true });
-    }
+    /* ---------- PAYMENT ---------- */
+if (interaction.isButton() && interaction.customId === "pay_swish") {
+  const t = tickets.get(interaction.channel.id);
+  return interaction.update({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("💳 Swish")
+        .setDescription(
+          `📱 **Nummer:** ${CONFIG.PAYMENTS.SWISH}\n💰 **Summa:** ${t.price}\n\n📸 Skicka screenshot på betalningen`
+        )
+        .setColor(CONFIG.BRAND.COLOR)
+    ]
+  });
+}
+
 
     /* APPROVE PAYMENT */
     if (i.isButton() && i.customId === "approve_payment") {
