@@ -76,13 +76,22 @@ const PRODUCTS = {
   }
 };
 
-/* ================= READY ================= */
+/* ================= READY (PANEL RESET) ================= */
 client.once(Events.ClientReady, async () => {
-  const panel = await client.channels.fetch(CONFIG.CHANNELS.PANEL);
-  const msgs = await panel.messages.fetch({ limit: 5 });
-  msgs.forEach(m => m.author.id === client.user.id && m.delete().catch(() => {}));
+  console.log(`✅ Inloggad som ${client.user.tag}`);
 
-  await panel.send({
+  const panelChannel = await client.channels.fetch(CONFIG.CHANNELS.PANEL);
+  if (!panelChannel || !panelChannel.isTextBased()) return;
+
+  // 🧹 Ta bort gamla paneler
+  const messages = await panelChannel.messages.fetch({ limit: 25 });
+  const botMessages = messages.filter(m => m.author.id === client.user.id);
+  for (const m of botMessages.values()) {
+    await m.delete().catch(() => {});
+  }
+
+  // 🟣 Ny panel
+  await panelChannel.send({
     embeds: [
       new EmbedBuilder()
         .setTitle(`💜 ${CONFIG.BRAND.NAME}`)
@@ -101,10 +110,10 @@ client.once(Events.ClientReady, async () => {
     ]
   });
 
-  console.log("✅ Bot redo");
+  console.log("🧹 Panel rensad & ny panel skickad");
 });
 
-/* ================= WELCOME ================= */
+/* ================= WELCOME (GAMLA) ================= */
 client.on(Events.GuildMemberAdd, async member => {
   const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
   if (!ch) return;
@@ -124,6 +133,7 @@ client.on(Events.GuildMemberAdd, async member => {
     ]
   });
 });
+
 /* ================= SCREENSHOT ================= */
 client.on(Events.MessageCreate, async msg => {
   if (msg.author.bot) return;
@@ -154,10 +164,7 @@ client.on(Events.MessageCreate, async msg => {
     await msg.channel.send({
       embeds: [
         new EmbedBuilder()
-          .setDescription(
-            "✅ **Betalning mottagen**\n" +
-            "🔍 Verifierar automatiskt…"
-          )
+          .setDescription("✅ **Betalning mottagen**\n🔍 Verifierar automatiskt…")
           .setColor(CONFIG.BRAND.COLOR)
       ],
       components: [
@@ -190,7 +197,7 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    /* PARTNER */
+    // 🤝 PARTNER
     if (type === "partner") {
       await channel.send({
         embeds: [
@@ -204,10 +211,7 @@ client.on(Events.InteractionCreate, async interaction => {
         ],
         components: [
           new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId("partner_form")
-              .setLabel("📝 Skicka annons")
-              .setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId("partner_form").setLabel("📝 Skicka annons").setStyle(ButtonStyle.Primary)
           )
         ]
       });
@@ -215,7 +219,7 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.editReply(`🤝 Partner-ticket skapad: ${channel}`);
     }
 
-    /* BUY */
+    // 🛒 BUY
     await channel.send({
       embeds: [
         new EmbedBuilder()
@@ -286,10 +290,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     return interaction.update({
       embeds: [
-        new EmbedBuilder()
-          .setTitle(product)
-          .setDescription("📅 Välj period")
-          .setColor(CONFIG.BRAND.COLOR)
+        new EmbedBuilder().setTitle(product).setDescription("📅 Välj period").setColor(CONFIG.BRAND.COLOR)
       ],
       components: [
         new ActionRowBuilder().addComponents(
@@ -317,9 +318,7 @@ client.on(Events.InteractionCreate, async interaction => {
       embeds: [
         new EmbedBuilder()
           .setTitle("💳 Välj betalmetod")
-          .setDescription(
-            `🧾 Order: **${orderId}**\n${product}\n${duration}\n💰 ${price}`
-          )
+          .setDescription(`🧾 Order: **${orderId}**\n${product}\n${duration}\n💰 ${price}`)
           .setColor(CONFIG.BRAND.COLOR)
       ],
       components: [
@@ -339,8 +338,7 @@ client.on(Events.InteractionCreate, async interaction => {
         new EmbedBuilder()
           .setTitle("📱 Swish-betalning")
           .setDescription(
-            `🧾 Order: **${d.orderId}**\n` +
-            `💰 ${d.price}\n\n` +
+            `🧾 Order: **${d.orderId}**\n💰 ${d.price}\n\n` +
             `📲 Swish till **${CONFIG.PAYMENTS.SWISH}**\n\n` +
             `📡 Status: ⏳ Väntar på betalning`
           )
@@ -357,8 +355,7 @@ client.on(Events.InteractionCreate, async interaction => {
         new EmbedBuilder()
           .setTitle("₿ LTC-betalning")
           .setDescription(
-            `🧾 Order: **${d.orderId}**\n` +
-            `💰 ${d.price}\n\n` +
+            `🧾 Order: **${d.orderId}**\n💰 ${d.price}\n\n` +
             `📥 Adress:\n\`${CONFIG.PAYMENTS.LTC}\`\n\n` +
             `📡 Status: ⏳ Väntar på betalning`
           )
@@ -379,11 +376,7 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.channel.send({
       embeds: [
         new EmbedBuilder()
-          .setDescription(
-            "🤖 **Automatisk verifiering klar**\n\n" +
-            "💜 Din betalning är godkänd.\n" +
-            "📦 Levererar ditt konto nu…"
-          )
+          .setDescription("🤖 **Automatisk verifiering klar**\n💜 Din betalning är godkänd.\n📦 Levererar ditt konto nu…")
           .setColor(CONFIG.BRAND.COLOR)
       ]
     });
@@ -410,24 +403,17 @@ client.on(Events.InteractionCreate, async interaction => {
     const d = interaction.channel.orderData;
 
     await customer.send(
-      `📦 **Ditt konto är klart!**\n\n` +
-      `📧 ${interaction.fields.getTextInputValue("email")}\n` +
-      `🔑 ${interaction.fields.getTextInputValue("password")}\n\n` +
-      `🧾 Order: **${d.orderId}**`
+      `📦 **Ditt konto är klart!**\n\n📧 ${interaction.fields.getTextInputValue("email")}\n` +
+      `🔑 ${interaction.fields.getTextInputValue("password")}\n\n🧾 Order: **${d.orderId}**`
     );
 
     await interaction.channel.send({
       embeds: [
-        new EmbedBuilder()
-          .setDescription("🌿 Kontot skickat! Klicka nedan när allt fungerar.")
-          .setColor(CONFIG.BRAND.COLOR)
+        new EmbedBuilder().setDescription("🌿 Kontot skickat! Klicka nedan när allt fungerar.").setColor(CONFIG.BRAND.COLOR)
       ],
       components: [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("confirm_working")
-            .setLabel("✅ Kontot fungerar")
-            .setStyle(ButtonStyle.Success)
+          new ButtonBuilder().setCustomId("confirm_working").setLabel("✅ Kontot fungerar").setStyle(ButtonStyle.Success)
         )
       ]
     });
@@ -437,9 +423,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
   /* CONFIRM WORKING */
   if (interaction.isButton() && interaction.customId === "confirm_working") {
-    const modal = new ModalBuilder()
-      .setCustomId("review_modal")
-      .setTitle("💜 Lämna ett omdöme");
+    const modal = new ModalBuilder().setCustomId("review_modal").setTitle("💜 Lämna ett omdöme");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
@@ -461,12 +445,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const vouch = await interaction.guild.channels.fetch(CONFIG.CHANNELS.VOUCH);
     await vouch.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("⭐ Ny review")
-          .setDescription(review)
-          .setColor(CONFIG.BRAND.COLOR)
-      ]
+      embeds: [new EmbedBuilder().setTitle("⭐ Ny review").setDescription(review).setColor(CONFIG.BRAND.COLOR)]
     });
 
     const doc = new PDFDocument();
