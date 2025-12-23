@@ -38,7 +38,8 @@ const CONFIG = {
     SWISH_LOGS: "1452671397871489175",
     PAYPAL_LOGS: "1453066917719048364",
     PARTNER_LOGS: "1452624943543226501",
-    VOUCH: "1452263084646338582"
+    VOUCH: "1452263084646338582",
+    FINISHED_ORDERS: "1452285768742600755"
   },
   ROLES: {
     SELLER: "1452263273528299673",
@@ -341,16 +342,15 @@ client.on(Events.InteractionCreate, async interaction => {
     });
   }
 
-  /* ===== REJECT ===== */
-  if (interaction.isButton() && interaction.customId === "reject_payment") {
-    return interaction.channel.send("❌ Betalning avvisad – kontakta säljare.");
-  }
-
-  /* ===== APPROVE ===== */
+  /* ===== APPROVE PAYMENT ===== */
   if (interaction.isButton() && interaction.customId === "approve_payment") {
     if (!interaction.member.roles.cache.has(CONFIG.ROLES.SELLER)) {
       return interaction.reply({ ephemeral: true, content: "❌ Endast säljare." });
     }
+
+    interaction.channel.orderData.seller =
+      interaction.member.displayName || interaction.user.username;
+    interaction.channel.orderData.sellerId = interaction.member.id;
 
     const modal = new ModalBuilder()
       .setCustomId("delivery_modal")
@@ -373,7 +373,7 @@ client.on(Events.InteractionCreate, async interaction => {
       )
     );
 
-    interaction.showModal(modal);
+    return interaction.showModal(modal);
   }
 
   /* ===== DELIVERY + PDF ===== */
@@ -418,11 +418,35 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    interaction.reply({ ephemeral: true, content: "📦 Leverans skickad." });
+    return interaction.reply({ ephemeral: true, content: "📦 Leverans skickad." });
   }
 
-  /* ===== REVIEW ===== */
+  /* ===== CONFIRM WORKING (NYTT) ===== */
   if (interaction.isButton() && interaction.customId === "confirm_working") {
+    const d = interaction.channel.orderData;
+
+    const finished = await interaction.guild.channels.fetch(
+      CONFIG.CHANNELS.FINISHED_ORDERS
+    );
+
+    await finished.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("✅ Order Completed – Svenska Streams")
+          .setDescription(
+            `🛍 **Shop:** Svenska Streams\n\n` +
+            `👤 **Köpare:** <@${interaction.user.id}>\n` +
+            `📦 **Produkt:** ${d.product}\n` +
+            `⏳ **Period:** ${d.duration}\n` +
+            `💰 **Pris:** ${d.price}\n` +
+            `💳 **Betalning:** ${d.paymentMethod}\n` +
+            `🧑‍💼 **Säljare:** ${d.sellerId ? `<@${d.sellerId}>` : "Svenska Streams"}`
+          )
+          .setColor(CONFIG.BRAND.COLOR)
+          .setTimestamp()
+      ]
+    });
+
     const modal = new ModalBuilder()
       .setCustomId("review_modal")
       .setTitle("💜 Lämna ett omdöme");
@@ -431,7 +455,7 @@ client.on(Events.InteractionCreate, async interaction => {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("stars")
-          .setLabel("Betyg (1–5)")
+          .setLabel("Betyg (1–5 ⭐)")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
       ),
@@ -444,7 +468,7 @@ client.on(Events.InteractionCreate, async interaction => {
       )
     );
 
-    interaction.showModal(modal);
+    return interaction.showModal(modal);
   }
 
   /* ===== REVIEW SUBMIT ===== */
@@ -462,9 +486,15 @@ client.on(Events.InteractionCreate, async interaction => {
           .addFields(
             { name: "🛒 Produkt", value: d.product, inline: true },
             { name: "💰 Pris", value: d.price, inline: true },
-            { name: "💳 Betalning", value: d.paymentMethod, inline: true }
+            { name: "👤 Kund", value: `<@${interaction.user.id}>`, inline: true },
+            {
+              name: "🧑‍💼 Säljare",
+              value: d.sellerId ? `<@${d.sellerId}>` : d.seller || "Svenska Streams",
+              inline: true
+            }
           )
           .setColor(CONFIG.BRAND.COLOR)
+          .setTimestamp()
       ]
     });
 
@@ -472,9 +502,10 @@ client.on(Events.InteractionCreate, async interaction => {
     const role = await interaction.guild.roles.fetch(CONFIG.ROLES.CUSTOMER);
     if (role) await member.roles.add(role);
 
-    interaction.reply({ ephemeral: true, content: "🙏 Tack för ditt omdöme!" });
+    await interaction.reply({ ephemeral: true, content: "🙏 Tack för ditt omdöme!" });
     setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
   }
+
 });
 
 /* ================= LOGIN ================= */
