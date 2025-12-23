@@ -36,6 +36,7 @@ const CONFIG = {
     BUY_CATEGORY: "1452706749340586025",
     PARTNER_CATEGORY: "1452706558226989089",
     SWISH_LOGS: "1452671397871489175",
+    PAYPAL_LOGS: "1453066917719048364",
     PARTNER_LOGS: "1452624943543226501",
     VOUCH: "1452263084646338582"
   },
@@ -47,7 +48,9 @@ const CONFIG = {
   },
   PAYMENTS: {
     SWISH: "0736816921",
-    LTC: "LbepGSyhcYXHCCLdE73NoGGFSLZAXebFkr"
+    LTC: "LbepGSyhcYXHCCLdE73NoGGFSLZAXebFkr",
+    PAYPAL: "@3upweru",
+    PAYPAL_ME: "https://paypal.me/3upweru"
   }
 };
 
@@ -102,6 +105,8 @@ client.once(Events.ClientReady, async () => {
       )
     ]
   });
+
+  console.log(`✅ Inloggad som ${client.user.tag}`);
 });
 
 /* ================= AUTOROLE + WELCOME ================= */
@@ -135,19 +140,35 @@ client.on(Events.MessageCreate, async msg => {
   if (!msg.channel.name?.startsWith("ticket-")) return;
   if (!msg.attachments.size) return;
 
+  if (msg.channel.screenshotReceived) return;
+  msg.channel.screenshotReceived = true;
+
   const img = msg.attachments.first();
-  const log = await msg.guild.channels.fetch(CONFIG.CHANNELS.SWISH_LOGS).catch(() => null);
+  const method = msg.channel.orderData?.paymentMethod || "Okänd";
+
+  const logId =
+    method === "PayPal"
+      ? CONFIG.CHANNELS.PAYPAL_LOGS
+      : CONFIG.CHANNELS.SWISH_LOGS;
+
+  const log = await msg.guild.channels.fetch(logId).catch(() => null);
 
   if (log) {
     await log.send({
       embeds: [
         new EmbedBuilder()
           .setTitle("📸 Betalning mottagen")
+          .addFields(
+            { name: "👤 Kund", value: `<@${msg.author.id}>`, inline: true },
+            { name: "💳 Metod", value: method, inline: true }
+          )
           .setImage(img.url)
           .setColor(CONFIG.BRAND.COLOR)
       ]
     });
   }
+
+  await msg.channel.send(`<@&${CONFIG.ROLES.SELLER}>`);
 
   await msg.channel.send({
     embeds: [
@@ -159,8 +180,12 @@ client.on(Events.MessageCreate, async msg => {
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("approve_payment")
-          .setLabel("⏳ Väntar på verifiering")
-          .setStyle(ButtonStyle.Secondary)
+          .setLabel("✅ Godkänn betalning")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("reject_payment")
+          .setLabel("❌ Avvisa")
+          .setStyle(ButtonStyle.Danger)
       )
     ]
   });
@@ -193,17 +218,8 @@ client.on(Events.InteractionCreate, async interaction => {
             .setTitle("🤝 Partner & Samarbeten")
             .setDescription("📄 Skicka in din annons via formuläret.")
             .setColor(CONFIG.BRAND.COLOR)
-        ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId("open_partner_form")
-              .setLabel("📄 Skicka annons")
-              .setStyle(ButtonStyle.Primary)
-          )
         ]
       });
-
       return interaction.editReply(`🤝 Partner-ticket skapad: ${ch}`);
     }
 
@@ -224,7 +240,7 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    return interaction.editReply(`🎟 Ticket skapad: ${ch}`);
+    interaction.editReply(`🎟 Ticket skapad: ${ch}`);
   }
 
   /* ===== SELECT PRODUCT ===== */
@@ -257,12 +273,12 @@ client.on(Events.InteractionCreate, async interaction => {
   /* ===== SELECT DURATION ===== */
   if (interaction.isStringSelectMenu() && interaction.customId === "select_duration") {
     const [product, duration, price] = interaction.values[0].split("|");
+
     interaction.channel.orderData = {
       product,
       duration,
       price,
-      orderId: orderId(),
-      seller: interaction.member.displayName
+      orderId: orderId()
     };
 
     return interaction.update({
@@ -278,46 +294,59 @@ client.on(Events.InteractionCreate, async interaction => {
       components: [
         new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("pay_swish").setLabel("📱 Swish").setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId("pay_ltc").setLabel("₿ LTC").setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId("pay_ltc").setLabel("₿ LTC").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("pay_paypal").setLabel("🅿️ PayPal").setStyle(ButtonStyle.Secondary)
         )
       ]
     });
   }
 
-  /* ===== PAY ===== */
-  if (interaction.isButton() && interaction.customId === "pay_swish") {
+  /* ===== PAY METHODS ===== */
+  if (interaction.isButton() && interaction.customId.startsWith("pay_")) {
     const d = interaction.channel.orderData;
+    let method = "Okänd";
+    let text = "";
+
+    if (interaction.customId === "pay_swish") {
+      method = "Swish";
+      text = `Swish till **${CONFIG.PAYMENTS.SWISH}**`;
+    }
+    if (interaction.customId === "pay_ltc") {
+      method = "LTC";
+      text = `Adress:\n\`${CONFIG.PAYMENTS.LTC}\``;
+    }
+    if (interaction.customId === "pay_paypal") {
+      method = "PayPal";
+      text =
+        `PayPal: **${CONFIG.PAYMENTS.PAYPAL}**\n` +
+        `${CONFIG.PAYMENTS.PAYPAL_ME}\n\n` +
+        `📱 QR:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${CONFIG.PAYMENTS.PAYPAL_ME}`;
+    }
+
+    interaction.channel.orderData.paymentMethod = method;
+
+    await interaction.channel.setTopic(
+      `Order: ${d.orderId} | ${d.product} | ${d.price} | Betalning: ${method}`
+    );
+
     return interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setTitle("📱 Swish-betalning")
+          .setTitle(`💳 ${method}-betalning`)
           .setDescription(
-            `🧾 Order: ${d.orderId}\n💰 Summa: ${d.price}\n\n` +
-            `Swish till **${CONFIG.PAYMENTS.SWISH}**\n\n` +
-            "📸 Skicka screenshot på betalningen"
+            `🧾 Order: ${d.orderId}\n💰 ${d.price}\n\n${text}\n\n📸 Skicka screenshot på betalningen`
           )
           .setColor(CONFIG.BRAND.COLOR)
       ]
     });
   }
 
-  if (interaction.isButton() && interaction.customId === "pay_ltc") {
-    const d = interaction.channel.orderData;
-    return interaction.update({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("₿ Litecoin")
-          .setDescription(
-            `🧾 Order: ${d.orderId}\n\n` +
-            `Adress:\n\`${CONFIG.PAYMENTS.LTC}\`\n\n` +
-            "📸 Skicka screenshot på betalningen"
-          )
-          .setColor(CONFIG.BRAND.COLOR)
-      ]
-    });
+  /* ===== REJECT ===== */
+  if (interaction.isButton() && interaction.customId === "reject_payment") {
+    return interaction.channel.send("❌ Betalning avvisad – kontakta säljare.");
   }
 
-  /* ===== APPROVE PAYMENT ===== */
+  /* ===== APPROVE ===== */
   if (interaction.isButton() && interaction.customId === "approve_payment") {
     if (!interaction.member.roles.cache.has(CONFIG.ROLES.SELLER)) {
       return interaction.reply({ ephemeral: true, content: "❌ Endast säljare." });
@@ -344,10 +373,10 @@ client.on(Events.InteractionCreate, async interaction => {
       )
     );
 
-    return interaction.showModal(modal);
+    interaction.showModal(modal);
   }
 
-  /* ===== DELIVERY ===== */
+  /* ===== DELIVERY + PDF ===== */
   if (interaction.isModalSubmit() && interaction.customId === "delivery_modal") {
     const d = interaction.channel.orderData;
     const user = interaction.channel.members.find(m => !m.user.bot);
@@ -363,7 +392,8 @@ client.on(Events.InteractionCreate, async interaction => {
           `Produkt: ${d.product}\n` +
           `Period: ${d.duration}\n` +
           `Pris: ${d.price}\n` +
-          `Order: ${d.orderId}`,
+          `Betalning: ${d.paymentMethod}\n\n` +
+          `🙏 Tack för ditt köp hos Svenska Streams!`,
         files: [new AttachmentBuilder(pdf, { name: `kvitto-${d.orderId}.pdf` })]
       });
     });
@@ -374,6 +404,7 @@ client.on(Events.InteractionCreate, async interaction => {
     doc.text(`Produkt: ${d.product}`);
     doc.text(`Period: ${d.duration}`);
     doc.text(`Pris: ${d.price}`);
+    doc.text(`Betalning: ${d.paymentMethod}`);
     doc.end();
 
     await interaction.channel.send({
@@ -387,10 +418,10 @@ client.on(Events.InteractionCreate, async interaction => {
       ]
     });
 
-    return interaction.reply({ ephemeral: true, content: "📦 Leverans skickad." });
+    interaction.reply({ ephemeral: true, content: "📦 Leverans skickad." });
   }
 
-  /* ===== REVIEW MODAL ===== */
+  /* ===== REVIEW ===== */
   if (interaction.isButton() && interaction.customId === "confirm_working") {
     const modal = new ModalBuilder()
       .setCustomId("review_modal")
@@ -400,21 +431,20 @@ client.on(Events.InteractionCreate, async interaction => {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("stars")
-          .setLabel("Betyg (1–5 ⭐)")
+          .setLabel("Betyg (1–5)")
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder("5")
           .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("review")
-          .setLabel("Omdöme (t.ex. snabbt och bra 10/10)")
+          .setLabel("Omdöme")
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
       )
     );
 
-    return interaction.showModal(modal);
+    interaction.showModal(modal);
   }
 
   /* ===== REVIEW SUBMIT ===== */
@@ -422,25 +452,19 @@ client.on(Events.InteractionCreate, async interaction => {
     const d = interaction.channel.orderData;
     const stars = Math.max(1, Math.min(5, parseInt(interaction.fields.getTextInputValue("stars"))));
     const review = interaction.fields.getTextInputValue("review");
-    const starStr = "⭐".repeat(stars);
 
     const vouch = await interaction.guild.channels.fetch(CONFIG.CHANNELS.VOUCH);
     await vouch.send({
       embeds: [
         new EmbedBuilder()
           .setTitle("🛡 Trusted Seller – Order Completed")
-          .setDescription(
-            `${starStr}\n\n` +
-            `💬 *"${review}"*`
-          )
+          .setDescription("⭐".repeat(stars) + `\n\n"${review}"`)
           .addFields(
             { name: "🛒 Produkt", value: d.product, inline: true },
             { name: "💰 Pris", value: d.price, inline: true },
-            { name: "👤 Kund", value: `<@${interaction.user.id}>`, inline: true },
-            { name: "🧑‍💼 Säljare", value: d.seller || "Svenska Streams", inline: true }
+            { name: "💳 Betalning", value: d.paymentMethod, inline: true }
           )
           .setColor(CONFIG.BRAND.COLOR)
-          .setTimestamp()
       ]
     });
 
@@ -448,10 +472,9 @@ client.on(Events.InteractionCreate, async interaction => {
     const role = await interaction.guild.roles.fetch(CONFIG.ROLES.CUSTOMER);
     if (role) await member.roles.add(role);
 
-    await interaction.reply({ ephemeral: true, content: "🙏 Tack för ditt omdöme!" });
+    interaction.reply({ ephemeral: true, content: "🙏 Tack för ditt omdöme!" });
     setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
   }
-
 });
 
 /* ================= LOGIN ================= */
