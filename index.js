@@ -328,57 +328,67 @@ Lösenord: ${password}
       return interaction.reply({ ephemeral: true, content: "Leverans skickad." });
     }
 
-    // ===== CONFIRM + REVIEW =====
-    if (interaction.isButton() && interaction.customId === "confirm_working") {
-      const modal = new ModalBuilder()
-        .setCustomId("review")
-        .setTitle("⭐ Omdöme");
+    // ===== REVIEW SUBMIT (VOUCH + FINISHED ORDER) =====
+if (interaction.isModalSubmit() && interaction.customId === "review") {
+  const t = tickets.get(ch.id);
 
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("stars").setLabel("Betyg (1–5)").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("text").setLabel("Omdöme").setStyle(TextInputStyle.Paragraph)
-        )
-      );
+  const starsInput = Number(interaction.fields.getTextInputValue("stars"));
+  const stars = "⭐".repeat(Math.max(1, Math.min(5, starsInput)));
+  const reviewText = interaction.fields.getTextInputValue("text");
 
-      return interaction.showModal(modal);
-    }
+  // ⭐ PREMIUM VOUCH EMBED
+  const vouchEmbed = new EmbedBuilder()
+    .setColor("#f5c542") // GULD
+    .setAuthor({
+      name: "Trusted Seller • Verified Order",
+      iconURL: interaction.guild.iconURL({ dynamic: true })
+    })
+    .setTitle("🛡️ Premium Kundomdöme")
+    .setDescription(`${stars}\n\n“${reviewText}”`)
+    .addFields(
+      { name: "🛒 Produkt", value: `**${t.product}**`, inline: true },
+      { name: "💰 Pris", value: `**${t.price}**`, inline: true },
+      { name: "👤 Kund", value: `<@${t.userId}>`, inline: true }
+    )
+    .setFooter({
+      text: "Svenska Streams • Säker & Verifierad Leverans"
+    })
+    .setTimestamp();
 
-    if (interaction.isModalSubmit() && interaction.customId === "review") {
-      const t = tickets.get(ch.id);
+  await client.channels
+    .fetch(CONFIG.CHANNELS.VOUCH)
+    .then(c => c.send({ embeds: [vouchEmbed] }));
 
-      await client.channels.fetch(CONFIG.CHANNELS.VOUCH).then(c =>
-        c.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("🛡️ Trusted Seller – Order Completed")
-              .setDescription(`⭐ ${interaction.fields.getTextInputValue("text")}`)
-              .addFields(
-                { name: "Produkt", value: t.product, inline: true },
-                { name: "Pris", value: t.price, inline: true },
-                { name: "Kund", value: `<@${t.userId}>`, inline: true }
-              )
-              .setColor("#f5c542")
-              .setTimestamp()
-          ]
-        })
-      );
+  // ✅ PREMIUM FÄRDIG ORDER EMBED
+  const finishedEmbed = new EmbedBuilder()
+    .setColor("#22c55e") // PREMIUM GRÖN
+    .setAuthor({
+      name: "Order Completed • Svenska Streams",
+      iconURL: interaction.guild.iconURL({ dynamic: true })
+    })
+    .setTitle("✅ Order slutförd")
+    .setDescription(
+      `Ordern är **levererad och bekräftad**.\n\n` +
+      `🆔 **Order ID:** \`${t.orderId}\``
+    )
+    .addFields(
+      { name: "🛒 Produkt", value: `**${t.product}**`, inline: true },
+      { name: "💰 Pris", value: `**${t.price}**`, inline: true },
+      { name: "👤 Kund", value: `<@${t.userId}>`, inline: true }
+    )
+    .setFooter({
+      text: "Svenska Streams • Premium Digital Services",
+      iconURL: interaction.guild.iconURL({ dynamic: true })
+    })
+    .setTimestamp();
 
-      await client.channels.fetch(CONFIG.CHANNELS.FINISHED)
-        .then(c => c.send(`✅ Order klar: ${t.product} – ${t.price}`));
+  await client.channels
+    .fetch(CONFIG.CHANNELS.FINISHED)
+    .then(c => c.send({ embeds: [finishedEmbed] }));
 
-      await interaction.reply("🙏 Tack för din order! Ticket stängs om 10 sek.");
-      setTimeout(() => ch.delete().catch(() => {}), 10000);
-    }
-
-  } catch (e) {
-    console.error(e);
-    if (!interaction.replied)
-      interaction.reply({ ephemeral: true, content: "Fel uppstod." }).catch(() => {});
-  }
-});
+  await interaction.reply("🙏 Tack för din order! Denna ticket stängs om **10 sekunder**.");
+  setTimeout(() => ch.delete().catch(() => {}), 10000);
+}
 
 // ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
