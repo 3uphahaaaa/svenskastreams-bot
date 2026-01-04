@@ -131,14 +131,30 @@ if (interaction.isButton() && interaction.customId === "ticket_buy") {
   await interaction.deferReply({ ephemeral: true });
 
   const orderId = genOrderId();
+
   const ticket = await interaction.guild.channels.create({
-    name: `order-${orderId}`,
+    name: `order-${interaction.user.username}-${orderId}`,
     type: ChannelType.GuildText,
     parent: CONFIG.CHANNELS.BUY_CATEGORY,
     permissionOverwrites: [
-      { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-      { id: CONFIG.ROLES.SELLER, allow: [PermissionsBitField.Flags.ViewChannel] }
+      {
+        id: interaction.guild.id,
+        deny: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: interaction.user.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
+      },
+      {
+        id: CONFIG.ROLES.SELLER,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
+      }
     ]
   });
 
@@ -151,6 +167,7 @@ if (interaction.isButton() && interaction.customId === "ticket_buy") {
     embeds: [
       new EmbedBuilder()
         .setTitle("🛒 Välj produkt")
+        .setDescription("Välj vad du vill köpa i listan nedan")
         .setColor(CONFIG.BRAND.COLOR)
     ],
     components: [
@@ -168,7 +185,9 @@ if (interaction.isButton() && interaction.customId === "ticket_buy") {
     ]
   });
 
-  return interaction.editReply(`🎟 Ticket skapad: ${ticket}`);
+  return interaction.editReply({
+    content: `🎟️ Ticket skapad: ${ticket}`
+  });
 }
 
     // ===== PRODUCT SELECT =====
