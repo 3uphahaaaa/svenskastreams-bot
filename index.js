@@ -156,7 +156,7 @@ client.on(Events.InteractionCreate, async interaction => {
     label: `${p} – ${price}`,
     value: p
 
-        ]
+        
       });
 
       return interaction.editReply(`🎟 Ticket skapad: ${ticket}`);
