@@ -155,8 +155,6 @@ client.on(Events.InteractionCreate, async interaction => {
   Object.entries(PRODUCTS).map(([p, price]) => ({
     label: `${p} – ${price}`,
     value: p
-  }))
-)
 
         ]
       });
