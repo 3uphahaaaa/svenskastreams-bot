@@ -127,40 +127,49 @@ client.on(Events.InteractionCreate, async interaction => {
     const ch = interaction.channel;
 
     // ===== CREATE TICKET =====
-    if (interaction.isButton() && interaction.customId === "ticket_buy") {
-      await interaction.deferReply({ ephemeral: true });
+if (interaction.isButton() && interaction.customId === "ticket_buy") {
+  await interaction.deferReply({ ephemeral: true });
 
-      const orderId = genOrderId();
-      const ticket = await interaction.guild.channels.create({
-        name: `order-${orderId}`,
-        type: ChannelType.GuildText,
-        parent: CONFIG.CHANNELS.BUY_CATEGORY,
-        permissionOverwrites: [
-          { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-          { id: CONFIG.ROLES.SELLER, allow: [PermissionsBitField.Flags.ViewChannel] }
-        ]
-      });
+  const orderId = genOrderId();
+  const ticket = await interaction.guild.channels.create({
+    name: `order-${orderId}`,
+    type: ChannelType.GuildText,
+    parent: CONFIG.CHANNELS.BUY_CATEGORY,
+    permissionOverwrites: [
+      { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+      { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
+      { id: CONFIG.ROLES.SELLER, allow: [PermissionsBitField.Flags.ViewChannel] }
+    ]
+  });
 
-      tickets.set(ticket.id, { userId: interaction.user.id, orderId });
+  tickets.set(ticket.id, {
+    userId: interaction.user.id,
+    orderId
+  });
 
-      await ticket.send({
-        embeds: [new EmbedBuilder().setTitle("🛒 Välj produkt").setColor(CONFIG.BRAND.COLOR)],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId("select_product")
-              .setPlaceholder("Välj produkt")
-              .addOptions(
-  Object.entries(PRODUCTS).map(([p, price]) => ({
-    label: `${p} – ${price}`,
-    value: p
+  await ticket.send({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("🛒 Välj produkt")
+        .setColor(CONFIG.BRAND.COLOR)
+    ],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("select_product")
+          .setPlaceholder("Välj produkt")
+          .addOptions(
+            Object.entries(PRODUCTS).map(([product, price]) => ({
+              label: `${product} – ${price}`,
+              value: product
+            }))
+          )
+      )
+    ]
+  });
 
-        
-      });
-
-      return interaction.editReply(`🎟 Ticket skapad: ${ticket}`);
-    }
+  return interaction.editReply(`🎟 Ticket skapad: ${ticket}`);
+}
 
     // ===== PRODUCT SELECT =====
     if (interaction.isStringSelectMenu() && interaction.customId === "select_product") {
