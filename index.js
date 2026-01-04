@@ -83,28 +83,33 @@ client.once(Events.ClientReady, async () => {
 
 // ================= AUTOROLE + WELCOME =================
 client.on(Events.GuildMemberAdd, async member => {
-  const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
-  if (role) await member.roles.add(role);
+  try {
+    const role = member.guild.roles.cache.get(CONFIG.ROLES.MEMBER);
+    if (role) await member.roles.add(role);
 
-  const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
-  if (!ch) return;
+    const ch = member.guild.channels.cache.get(CONFIG.CHANNELS.WELCOME);
+    if (!ch) return;
 
-  ch.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("👋 Välkommen till Svenska Streams!")
-        .setDescription(
-          "Billiga & säkra **premiumtjänster** 🚀\n\n" +
-          "🛒 Spotify • Netflix • HBO • Disney • NordVPN\n" +
-          "🚀 Boosts • 👥 Members\n\n" +
-          `🎟 **Köp direkt:** <#${CONFIG.CHANNELS.PANEL}>\n` +
-          `⭐ **Omdömen:** <#${CONFIG.CHANNELS.VOUCH}>`
-        )
-        .setColor(CONFIG.BRAND.COLOR)
-        .setFooter({ text: "Svenska Streams • Snabbt • Tryggt" })
-    ]
-  });
+    await ch.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("👋 Välkommen till Svenska Streams!")
+          .setDescription(
+            `Billiga & säkra **premiumtjänster** med snabb leverans 🚀\n\n` +
+            `🛒 **Marknad**\nSpotify • Netflix • HBO Max • Disney+ • NordVPN\nBoosts • Members\n\n` +
+            `🎟 **Köp direkt**\nSkapa ticket här → <#${CONFIG.CHANNELS.PANEL}>\n\n` +
+            `⭐ **Omdömen:** <#${CONFIG.CHANNELS.VOUCH}>\n` +
+            `✅ **Färdiga orders:** <#${CONFIG.CHANNELS.FINISHED}>`
+          )
+          .setColor(CONFIG.BRAND.COLOR)
+          .setFooter({ text: "Svenska Streams • Snabbt • Tryggt • Enkelt" })
+      ]
+    });
+  } catch (err) {
+    console.error("Welcome error:", err);
+  }
 });
+
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async interaction => {
