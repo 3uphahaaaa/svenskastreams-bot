@@ -142,10 +142,13 @@ client.on(Events.InteractionCreate, async interaction => {
             new StringSelectMenuBuilder()
               .setCustomId("select_product")
               .setPlaceholder("Välj produkt")
-              .addOptions(Object.entries(PRODUCTS).map(([p, price]) => ({
-                label: `${p} – ${price}`,
-                value: p
-              })))
+              .addOptions(
+  Object.entries(PRODUCTS).map(([p, price]) => ({
+    label: `${p} – ${price}`,
+    value: p
+  }))
+)
+
         ]
       });
 
