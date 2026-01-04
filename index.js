@@ -106,10 +106,9 @@ client.on(Events.GuildMemberAdd, async member => {
       ]
     });
   } catch (err) {
-    console.error("Welcome error:", err);
+    console.error(err);
   }
 });
-
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async interaction => {
