@@ -96,13 +96,18 @@ client.on(Events.GuildMemberAdd, async member => {
           .setTitle("👋 Välkommen till Svenska Streams!")
           .setDescription(
             `Billiga & säkra **premiumtjänster** med snabb leverans 🚀\n\n` +
-            `🛒 **Marknad**\nSpotify • Netflix • HBO Max • Disney+ • NordVPN\nBoosts • Members\n\n` +
-            `🎟 **Köp direkt**\nSkapa ticket här → <#${CONFIG.CHANNELS.PANEL}>\n\n` +
+            `🛒 **Marknad**\n` +
+            `Spotify • Netflix • HBO Max • Disney+ • NordVPN\n` +
+            `Boosts • Members\n\n` +
+            `🎟 **Köp direkt**\n` +
+            `Skapa ticket här → <#${CONFIG.CHANNELS.PANEL}>\n\n` +
             `⭐ **Omdömen:** <#${CONFIG.CHANNELS.VOUCH}>\n` +
             `✅ **Färdiga orders:** <#${CONFIG.CHANNELS.FINISHED}>`
           )
           .setColor(CONFIG.BRAND.COLOR)
-          .setFooter({ text: "Svenska Streams • Snabbt • Tryggt • Enkelt" })
+          .setFooter({
+            text: "Svenska Streams • Snabbt • Tryggt • Enkelt"
+          })
       ]
     });
   } catch (err) {
